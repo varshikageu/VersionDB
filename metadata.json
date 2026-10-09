@@ -1,0 +1,6 @@
+{
+  "name": "VersionDB — SQL Version Control Platform",
+  "description": "SQL-first, Git-inspired database version-control platform supporting repositories, SQL editing, commits, branches, diffs, merge requests, conflict resolution, RBAC governance, and historical rollback.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
