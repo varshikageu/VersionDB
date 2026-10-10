@@ -1,0 +1,13 @@
+CREATE INDEX api_tokens_user_idx            ON api_tokens (user_id, kind);
+CREATE INDEX repository_members_user_idx    ON repository_members (user_id);
+CREATE INDEX branches_repo_idx              ON branches (repo_id);
+CREATE INDEX commits_repo_time_idx          ON commits (repo_id, created_at DESC, id DESC);
+CREATE INDEX commits_author_idx             ON commits (author_id);
+CREATE INDEX merge_requests_repo_status_idx ON merge_requests (repo_id, status, created_at DESC);
+CREATE INDEX merge_approvals_mr_idx         ON merge_approvals (merge_request_id);
+CREATE INDEX conflicts_mr_idx               ON conflicts (merge_request_id);
+CREATE INDEX audit_logs_repo_idx            ON audit_logs (repo_id, id DESC);
+CREATE INDEX audit_logs_actor_idx           ON audit_logs (actor_id, id DESC);
+CREATE INDEX audit_logs_action_idx          ON audit_logs (action, created_at DESC);
+CREATE INDEX idempotency_keys_expiry_idx    ON idempotency_keys (expires_at);
+CREATE INDEX jobs_queue_idx                 ON jobs (status, run_at);
