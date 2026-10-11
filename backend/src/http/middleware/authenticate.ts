@@ -1,9 +1,10 @@
 import type { RequestHandler } from 'express';
 import type { AuthService } from '../../application/auth/auth.service';
 import { unauthorized } from '../../shared/errors';
+import { asyncHandler } from './async-handler';
 
 export function authenticate(auth: AuthService): RequestHandler {
-  return async (req, _res, next) => {
+  return asyncHandler(async (req, _res, next) => {
     const header = req.header('authorization');
     const match = header ? /^Bearer\s+(\S+)$/i.exec(header) : null;
     if (!match) throw unauthorized();
@@ -11,5 +12,6 @@ export function authenticate(auth: AuthService): RequestHandler {
     const user = await auth.loadActiveUser(claims.userId);
     req.auth = { userId: user.id, globalRole: user.globalRole }; // role from the DB row, not the (possibly stale) token
     next();
-  };
+  });
 }
+

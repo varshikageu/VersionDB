@@ -5,6 +5,7 @@ import { sha256Hex } from '../../shared/crypto';
 import { badRequest, conflict, unprocessable } from '../../shared/errors';
 import { stableStringify } from '../../shared/json';
 import type { Logger } from '../../observability/logger';
+import { asyncHandler } from './async-handler';
 
 /**
  * Optional `Idempotency-Key` header on mutating POSTs. A retry with the same key and body replays the stored 2xx response
@@ -12,7 +13,7 @@ import type { Logger } from '../../observability/logger';
  * Must run after `authenticate`.
  */
 export function idempotent(service: IdempotencyService, logger: Logger): RequestHandler {
-  return async (req, res, next) => {
+  return asyncHandler(async (req, res, next) => {
     const key = req.header('idempotency-key');
     if (!key) return next();
     if (!IDEMPOTENCY_KEY_RE.test(key)) throw badRequest('INVALID_IDEMPOTENCY_KEY', 'Idempotency-Key must be 8-128 characters of letters, digits, _ . : -');
@@ -35,5 +36,5 @@ export function idempotent(service: IdempotencyService, logger: Logger): Request
       return send(body);
     };
     next();
-  };
+  });
 }

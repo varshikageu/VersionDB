@@ -9,6 +9,9 @@ export const notFoundHandler: RequestHandler = (_req, res) => {
 
 export function errorHandler(logger: Logger): ErrorRequestHandler {
   return (err, req, res, _next) => {
+    if (res.headersSent) {
+      return _next(err);
+    }
     const requestId = req.id;
     if (err instanceof AppError) {
       res.status(err.status).json({ error: { code: err.code, message: err.message, details: err.details, requestId } });
