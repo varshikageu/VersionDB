@@ -117,15 +117,15 @@ export const Sidebar: React.FC = () => {
         key={item.path}
         type="button"
         onClick={() => navigateTo(item.path)}
-        className={`w-full flex items-center gap-3 px-3 py-1.5 rounded-md transition-all text-left ${
+        className={`w-full flex items-center gap-3 px-3 py-1.5 rounded-lg transition-colors text-left text-xs ${
           isActive
-            ? 'text-blue-600 bg-blue-50/80 font-semibold border-l-2 border-blue-600'
-            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+            ? 'text-primary bg-primary/10 font-semibold'
+            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 font-medium'
         }`}
       >
         <span
-          className={`material-symbols-outlined text-lg ${
-            isActive ? 'text-blue-600' : item.iconColorClass || ''
+          className={`material-symbols-outlined text-base ${
+            isActive ? 'text-primary' : item.iconColorClass || 'text-slate-400 group-hover:text-slate-600'
           }`}
         >
           {item.icon}
@@ -133,7 +133,7 @@ export const Sidebar: React.FC = () => {
         <span className="truncate">{item.label}</span>
         {item.requiresAdminHint && !roleCapabilities.canAdminApproveEscalation && (
           <span
-            className="ml-auto material-symbols-outlined text-[13px] text-secondary/70"
+            className="ml-auto material-symbols-outlined text-[13px] text-secondary/60"
             title="Requires Admin / Lead DBA authorization on backend"
           >
             lock
@@ -145,17 +145,17 @@ export const Sidebar: React.FC = () => {
   };
 
   return (
-    <aside className="fixed left-0 top-14 bottom-0 w-64 bg-slate-50 border-r border-surface-container flex flex-col justify-between p-3 z-30 font-['Inter'] text-xs font-medium select-none overflow-y-auto">
-      <div className="space-y-5">
+    <aside className="fixed left-0 top-14 bottom-0 w-64 bg-slate-50/90 backdrop-blur-xs border-r border-slate-200/70 flex flex-col justify-between p-3.5 z-30 select-none overflow-y-auto">
+      <div className="space-y-6">
         <div className="space-y-0.5">
-          <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 font-['JetBrains_Mono']">
+          <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 font-label-mono">
             Core Operations
           </div>
           {CORE_ITEMS.map(renderItem)}
         </div>
 
         <div className="space-y-0.5">
-          <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 font-['JetBrains_Mono']">
+          <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 font-label-mono">
             Governance & System
           </div>
           {GOVERNANCE_ITEMS.map(renderItem)}

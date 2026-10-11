@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import {
   BackendStatusBanner,
-  EmptyStateCard,
   ErrorStateCard,
 } from '../components/common/StateViews';
 import { useVersionDb } from '../context/VersionDbContext';
+
 
 export const SqlWorkspaceScreen: React.FC = () => {
   const {
@@ -44,6 +44,9 @@ export const SqlWorkspaceScreen: React.FC = () => {
     activeTab.sql || ''
   );
 
+  // Detect SHOW DATABASES and similar non-PostgreSQL syntax
+  const isInvalidPgSyntax = /^\s*SHOW\s+(DATABASES|TABLES|COLUMNS|SCHEMAS)\b/i.test(activeTab.sql || '');
+
   return (
     <div className="flex flex-col w-full pb-12 pt-2 space-y-4">
       {/* Header Bar */}
@@ -55,7 +58,7 @@ export const SqlWorkspaceScreen: React.FC = () => {
             <span className="text-primary font-semibold">{activeBranch || 'No Branch'}</span>
           </div>
           <h1 className="font-headline text-headline-lg text-on-surface">
-            SQL Workspace & Isolated Query Runner
+            SQL Workspace
           </h1>
         </div>
         <div className="flex items-center gap-2">
@@ -66,13 +69,15 @@ export const SqlWorkspaceScreen: React.FC = () => {
               className="px-4 py-2 rounded-lg bg-error text-white font-body-sm text-xs font-semibold shadow-xs flex items-center gap-1.5"
             >
               <span className="material-symbols-outlined text-sm">stop_circle</span>
-              Cancel Query
+              Cancel
             </button>
           ) : (
             <button
               type="button"
               onClick={() => void executeActiveQuery()}
-              className="px-4 py-2 rounded-lg bg-gradient-to-b from-primary to-primary-container text-on-primary font-body-sm text-xs font-semibold shadow-sm hover:opacity-95 flex items-center gap-1.5"
+              title="SQL execution is not yet implemented in the backend"
+              className="px-4 py-2 rounded-lg bg-surface-container text-secondary font-body-sm text-xs font-semibold border border-outline-variant/30 flex items-center gap-1.5 cursor-not-allowed opacity-60"
+              disabled
             >
               <span className="material-symbols-outlined text-sm">play_arrow</span>
               Run Query
@@ -104,6 +109,34 @@ export const SqlWorkspaceScreen: React.FC = () => {
             </button>
           )}
         </div>
+      </div>
+
+      {/* SQL Engine Status Notice */}
+      <div className="rounded-xl border border-[#f59e0b]/35 bg-[#fffbeb] px-4 py-3 flex items-start gap-3">
+        <span className="material-symbols-outlined text-[#d97706] text-lg mt-0.5 shrink-0">construction</span>
+        <div className="flex-1 min-w-0">
+          <div className="font-headline text-body-sm font-semibold text-[#92400e]">
+            SQL Execution Engine — Not Implemented
+          </div>
+          <p className="font-body-sm text-xs text-[#92400e]/80 mt-0.5 leading-relaxed">
+            The VersionDB backend does not yet expose a SQL execution endpoint (<code className="font-code-sm">POST /api/sql/query</code> is absent from the route table).
+            VersionDB manages versioned <em>record collections</em> via the Records & Commits API — it is not a general-purpose SQL query proxy.
+            You can still compose SQL in this editor and <strong>Stage for Commit</strong> DDL/DML mutations; live query execution requires a future backend implementation.
+          </p>
+          {isInvalidPgSyntax && (
+            <p className="font-body-sm text-xs text-[#92400e] mt-1.5 font-semibold">
+              ⚠ <code className="font-code-sm">SHOW DATABASES</code> is MySQL syntax and is not valid PostgreSQL.
+              Use <code className="font-code-sm">SELECT datname FROM pg_database;</code> instead (once the execution endpoint is implemented).
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => setApiContractDrawerOpen(true)}
+          className="shrink-0 px-2.5 py-1.5 rounded-lg bg-white border border-[#f59e0b]/30 font-body-sm text-[11px] font-medium text-[#92400e] hover:bg-[#fef3c7] transition-colors"
+        >
+          View Contract
+        </button>
       </div>
 
       <BackendStatusBanner
@@ -264,20 +297,21 @@ export const SqlWorkspaceScreen: React.FC = () => {
                   </div>
                 </div>
               ) : !lastQueryResult ? (
-                <EmptyStateCard
-                  icon="terminal"
-                  title="No Query Executed Yet"
-                  description="Enter a SQL statement above and click Run Query. Results are returned directly from the configured VersionDB backend without synthetic rows."
-                />
+                <div className="py-8 text-center space-y-2">
+                  <span className="material-symbols-outlined text-secondary text-2xl">terminal</span>
+                  <div className="font-headline text-body-sm font-semibold text-on-surface">SQL Execution Not Available</div>
+                  <p className="font-body-sm text-xs text-secondary max-w-md mx-auto leading-relaxed">
+                    The backend does not implement a SQL execution engine. You can write queries here for reference or stage DDL/DML mutations for commit.
+                  </p>
+                </div>
               ) : lastQueryResult.status === 'error' ? (
                 <ErrorStateCard
-                  title="SQL Execution Failed"
+                  title="SQL Execution Not Implemented"
                   message={
                     lastQueryResult.errorMessage ||
-                    'The query could not be executed because the backend SQL engine is unavailable.'
+                    'The VersionDB backend does not expose a SQL execution endpoint. See the Backend Contract for details.'
                   }
-                  code={lastQueryResult.errorCode || 'ERR_SQL_ENGINE'}
-                  onRetry={() => void executeActiveQuery()}
+                  code={lastQueryResult.errorCode || 'NOT_IMPLEMENTED'}
                 />
               ) : resultSubTab === 'rows' ? (
                 lastQueryResult.rows.length === 0 ? (
