@@ -7,6 +7,7 @@ export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
   signal?: AbortSignal;
   sessionToken?: string | null;
   uiRoleHint?: UserRole;
+  headers?: Record<string, string>;
 }
 
 export interface ApiClientCallbacks {
@@ -24,13 +25,16 @@ export interface ApiClientConfigOverride {
  * Centralized HTTP API Client for VersionDB.
  * - Reads VITE_API_BASE_URL via getEnvironmentConfig()
  * - Attaches Bearer authentication headers when a real session token exists
+ * - Normalizes endpoint URLs and handles /api route prefixes gracefully
  * - Supports request cancellation (AbortSignal) and configurable timeouts
- * - Normalizes HTTP 401, 403, 404, 5xx, and network errors into ServiceOperationResult
+ * - Normalizes HTTP 400, 401, 403, 404, 5xx, and network errors into ServiceOperationResult
+ * - Extracts structured backend Zod validation issue details into human-readable messages
  * - Never fabricates mock responses or fake operational records
  */
 export class VersionDbApiClient {
   private callbacks: ApiClientCallbacks = {};
   private configOverride?: ApiClientConfigOverride;
+  private defaultSessionToken: string | null = null;
 
   constructor(configOverride?: ApiClientConfigOverride) {
     this.configOverride = configOverride;
@@ -38,6 +42,14 @@ export class VersionDbApiClient {
 
   public setCallbacks(callbacks: ApiClientCallbacks): void {
     this.callbacks = callbacks;
+  }
+
+  public setSessionToken(token: string | null): void {
+    this.defaultSessionToken = token;
+  }
+
+  public getSessionToken(): string | null {
+    return this.defaultSessionToken;
   }
 
   public getBaseUrl(): string {
@@ -49,6 +61,35 @@ export class VersionDbApiClient {
 
   public isConfigured(): boolean {
     return this.getBaseUrl().length > 0;
+  }
+
+  /**
+   * Resolves final request URL given configured base URL and endpoint descriptor.
+   * Handles cases where VITE_API_BASE_URL includes or omits the `/api` prefix.
+   */
+  public resolveUrl(resourceDescriptor: string): string {
+    const baseUrl = this.getBaseUrl();
+    const cleanPath = resourceDescriptor.startsWith('/') ? resourceDescriptor : `/${resourceDescriptor}`;
+
+    if (!baseUrl) {
+      return cleanPath;
+    }
+
+    if (baseUrl.endsWith('/api') && cleanPath.startsWith('/api/')) {
+      return `${baseUrl}${cleanPath.slice(4)}`;
+    }
+
+    if (
+      !baseUrl.endsWith('/api') &&
+      !cleanPath.startsWith('/api/') &&
+      !cleanPath.startsWith('/health') &&
+      !cleanPath.startsWith('/ready') &&
+      !cleanPath.startsWith('/metrics')
+    ) {
+      return `${baseUrl}/api${cleanPath}`;
+    }
+
+    return `${baseUrl}${cleanPath}`;
   }
 
   public async request<T>(
@@ -96,19 +137,19 @@ export class VersionDbApiClient {
     const headers: Record<string, string> = {
       Accept: 'application/json',
       ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.headers || {}),
     };
 
-    if (options.sessionToken) {
-      headers['Authorization'] = `Bearer ${options.sessionToken}`;
+    const token = options.sessionToken !== undefined ? options.sessionToken : this.defaultSessionToken;
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
 
     const fetchFn = this.configOverride?.fetchImpl ?? globalThis.fetch.bind(globalThis);
-    const normalizedPath = resourceDescriptor.startsWith('/')
-      ? resourceDescriptor
-      : `/${resourceDescriptor}`;
+    const targetUrl = this.resolveUrl(resourceDescriptor);
 
     try {
-      const response = await fetchFn(`${baseUrl}${normalizedPath}`, {
+      const response = await fetchFn(targetUrl, {
         method: options.method || 'GET',
         headers,
         body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
@@ -140,26 +181,64 @@ export class VersionDbApiClient {
       }
 
       if (response.status === 404) {
+        let notFoundDetail = 'Requested resource was not found on the server (HTTP 404).';
+        try {
+          const errJson = await response.json();
+          if (errJson?.error?.message) {
+            notFoundDetail = errJson.error.message;
+          }
+        } catch {
+          // Ignore parse failure
+        }
         return {
           ok: false,
           statusCode: 404,
           errorCode: 'NOT_FOUND',
-          error: `Requested resource was not found on the server (HTTP 404).`,
+          error: notFoundDetail,
         };
       }
 
       if (!response.ok) {
         let serverDetail = '';
+        let errorCode: ServiceOperationResult['errorCode'] =
+          response.status === 400 ? 'VALIDATION_ERROR' : 'SERVER_ERROR';
+
         try {
           const errJson = await response.json();
-          serverDetail = errJson?.message || errJson?.error || '';
+          if (errJson?.error && typeof errJson.error === 'object') {
+            const errObj = errJson.error as {
+              code?: string;
+              message?: string;
+              details?: Array<{ path?: string; message?: string }>;
+            };
+            if (errObj.details && Array.isArray(errObj.details) && errObj.details.length > 0) {
+              const detailLines = errObj.details
+                .map((d) => (d.path ? `${d.path}: ${d.message}` : d.message || 'invalid field'))
+                .join('; ');
+              serverDetail = `${errObj.message || 'Validation failed'}: ${detailLines}`;
+            } else {
+              serverDetail = errObj.message || '';
+            }
+            if (
+              errObj.code === 'VALIDATION_ERROR' ||
+              errObj.code === 'INVALID_RECORD' ||
+              errObj.code === 'INVALID_MESSAGE'
+            ) {
+              errorCode = 'VALIDATION_ERROR';
+            }
+          } else if (typeof errJson?.error === 'string') {
+            serverDetail = errJson.error;
+          } else if (typeof errJson?.message === 'string') {
+            serverDetail = errJson.message;
+          }
         } catch {
           // Ignore JSON parse failures on non-JSON error payloads
         }
+
         return {
           ok: false,
           statusCode: response.status,
-          errorCode: 'SERVER_ERROR',
+          errorCode,
           error:
             serverDetail ||
             `Backend service returned HTTP ${response.status} (${response.statusText || 'Error'}).`,

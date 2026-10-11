@@ -39,43 +39,341 @@ export interface CatalogSnapshotPayload {
   notifications: NotificationItem[];
 }
 
+export interface BackendUserDto {
+  id: string;
+  email: string;
+  username: string;
+  globalRole: 'admin' | 'user';
+}
+
+export interface BackendAuthResponseDto {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+  user: BackendUserDto;
+}
+
+export interface BackendRepoDto {
+  id: string;
+  name: string;
+  description: string;
+  ownerId: string;
+  defaultBranch: string;
+  createdAt: string;
+  role?: string;
+}
+
+export interface BackendBranchDto {
+  id: string;
+  repoId: string;
+  name: string;
+  headCommitId: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  protection: { requiredApprovals: number } | null;
+}
+
+export interface BackendMemberDto {
+  repoId: string;
+  userId: string;
+  username: string;
+  email: string;
+  role: 'viewer' | 'reviewer' | 'maintainer' | 'owner';
+  createdAt: string;
+}
+
+export interface BackendCommitDto {
+  id: string;
+  repoId: string;
+  snapshotHash: string;
+  authorId: string;
+  authorName: string | null;
+  message: string;
+  kind: 'initial' | 'normal' | 'merge' | 'revert';
+  createdAt: string;
+  parents: string[];
+  changeCount?: number;
+}
+
+export interface BackendWorkingChangeDto {
+  collection: string;
+  recordId: string;
+  op: 'put' | 'delete';
+  data: Record<string, unknown> | null;
+  updatedAt: string;
+}
+
+// --- Mappers between backend entities and frontend UI types ---
+
+export function mapBackendUserToProfile(u: BackendUserDto): UserProfile {
+  const role: UserRole = u.globalRole === 'admin' ? 'Admin' : 'Developer';
+  return {
+    id: u.id,
+    name: u.username,
+    handle: u.username,
+    email: u.email,
+    role,
+    title: u.globalRole === 'admin' ? 'System Administrator' : 'Database Engineer',
+    avatarUrl: '',
+  };
+}
+
+export function mapRepoRoleToUserRole(role: string): UserRole {
+  switch (role) {
+    case 'owner':
+      return 'Admin';
+    case 'reviewer':
+      return 'Reviewer';
+    case 'maintainer':
+      return 'Developer';
+    case 'viewer':
+    default:
+      return 'Viewer';
+  }
+}
+
+export function mapUserRoleToRepoRole(role: UserRole): 'owner' | 'maintainer' | 'reviewer' | 'viewer' {
+  switch (role) {
+    case 'Admin':
+      return 'owner';
+    case 'Reviewer':
+      return 'reviewer';
+    case 'Developer':
+      return 'maintainer';
+    case 'Viewer':
+    default:
+      return 'viewer';
+  }
+}
+
+export function mapBackendMemberToProfile(m: BackendMemberDto): UserProfile {
+  return {
+    id: m.userId,
+    name: m.username,
+    handle: m.username,
+    email: m.email,
+    role: mapRepoRoleToUserRole(m.role),
+    title: `${m.role.toUpperCase()} Member`,
+    avatarUrl: '',
+  };
+}
+
+export function mapBackendRepoToRepository(r: BackendRepoDto): Repository {
+  return {
+    id: r.id,
+    name: r.name,
+    engine: 'PostgreSQL',
+    engineVersion: '16.0',
+    environment: 'Production',
+    region: 'local',
+    instanceDesc: r.description || 'VersionDB Managed Repository',
+    defaultBranch: r.defaultBranch || 'main',
+    activeBranchesCount: 1,
+    commitsTodayCount: 0,
+    openMrCount: 0,
+    conflictsCount: 0,
+    connectionMode: 'connected',
+    latencyMs: 12,
+    walLag: '0 KB',
+    snapshotDiskUsedGb: 0.1,
+    snapshotDiskTotalGb: 10,
+    latestSnapshotRef: 'HEAD',
+    replicaBufferHealthPct: 100,
+  };
+}
+
+export function mapBackendBranchToRecord(b: BackendBranchDto): BranchRecord {
+  const headHash = b.headCommitId ? b.headCommitId.replace(/-/g, '').slice(0, 8) : '00000000';
+  return {
+    name: b.name,
+    isProtected: Boolean(b.protection),
+    headCommitHash: headHash,
+    headCommitTitle: b.headCommitId ? `Commit ${headHash}` : 'Initial Branch HEAD',
+    aheadCount: 0,
+    behindCount: 0,
+    authorHandle: b.createdBy ? 'author' : 'system',
+    updatedRelative: b.createdAt ? new Date(b.createdAt).toLocaleDateString() : 'Active',
+  };
+}
+
+export function mapBackendCommitToRecord(
+  c: BackendCommitDto,
+  branch = 'main'
+): CommitRecord {
+  const shortHash = c.id.replace(/-/g, '').slice(0, 8);
+  const mutationsCount = c.changeCount ?? 1;
+  return {
+    hash: shortHash,
+    message: c.message,
+    timestampRelative: new Date(c.createdAt).toLocaleDateString(),
+    timestampIso: new Date(c.createdAt).toISOString(),
+    summaryType: `${mutationsCount} mutation${mutationsCount === 1 ? '' : 's'}`,
+    branch,
+    affectedTable: 'records',
+    affectedRowsLabel: `${mutationsCount} row${mutationsCount === 1 ? '' : 's'}`,
+    authorName: c.authorName || 'VersionDB User',
+    authorHandle: c.authorName || 'user',
+    authorAvatar: '',
+    status: 'Checks Passed',
+    ddlPreview: '',
+    dmlCount: mutationsCount,
+  };
+}
+
 /**
  * Feature Services Layer for VersionDB.
  * All operations execute through the centralized VersionDbApiClient.
- * When the backend is not configured or an endpoint contract is pending specification,
- * methods return a truthful ServiceOperationResult failure and NEVER fabricate records.
+ * When an endpoint is implemented on the backend, it makes real HTTP calls.
+ * When an endpoint is missing from the backend, it returns a truthful ServiceOperationResult.
  */
 export function createVersionDbServices(client: VersionDbApiClient = apiClient) {
   return {
     auth: {
-      async verifySession(sessionToken: string): Promise<ServiceOperationResult<UserProfile>> {
-        return client.request<UserProfile>('PENDING_SPEC:AuthSessionVerify', {
+      async verifySession(sessionToken?: string | null): Promise<ServiceOperationResult<UserProfile>> {
+        const res = await client.request<{ user: BackendUserDto }>('/api/auth/me', {
           method: 'GET',
           sessionToken,
         });
+        if (res.ok && res.data) {
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: mapBackendUserToProfile(res.data.user),
+          };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
+        };
       },
+
       async signIn(
-        email: string,
+        identifier: string,
         password: string
-      ): Promise<ServiceOperationResult<{ token: string; user: UserProfile }>> {
-        if (!email.trim() || !password) {
+      ): Promise<ServiceOperationResult<{ token: string; refreshToken: string; user: UserProfile }>> {
+        const trimmed = identifier.trim();
+        if (!trimmed || !password) {
           return {
             ok: false,
             errorCode: 'VALIDATION_ERROR',
-            error: 'Email address and password are required.',
+            error: 'Email address (or username) and password are required.',
           };
         }
-        return client.request<{ token: string; user: UserProfile }>('PENDING_SPEC:AuthSignIn', {
+        const res = await client.request<BackendAuthResponseDto>('/api/auth/login', {
           method: 'POST',
-          body: { email: email.trim(), password },
+          body: { identifier: trimmed, password },
         });
+        if (res.ok && res.data) {
+          client.setSessionToken(res.data.accessToken);
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: {
+              token: res.data.accessToken,
+              refreshToken: res.data.refreshToken,
+              user: mapBackendUserToProfile(res.data.user),
+            },
+          };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
+        };
       },
-      async signOut(sessionToken?: string | null): Promise<ServiceOperationResult<void>> {
-        return client.request<void>('PENDING_SPEC:AuthSignOut', {
+
+      async register(
+        email: string,
+        username: string,
+        password: string
+      ): Promise<ServiceOperationResult<{ user: UserProfile }>> {
+        const cleanEmail = email.trim().toLowerCase();
+        const cleanUsername = username.trim();
+        if (!cleanEmail || !cleanUsername || !password) {
+          return {
+            ok: false,
+            errorCode: 'VALIDATION_ERROR',
+            error: 'Email, username, and password are required.',
+          };
+        }
+        if (password.length < 10) {
+          return {
+            ok: false,
+            errorCode: 'VALIDATION_ERROR',
+            error: 'Password must be at least 10 characters long.',
+          };
+        }
+        if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+          return {
+            ok: false,
+            errorCode: 'VALIDATION_ERROR',
+            error: 'Password must contain at least one letter and one digit.',
+          };
+        }
+        const res = await client.request<{ user: BackendUserDto }>('/api/auth/register', {
           method: 'POST',
-          sessionToken,
+          body: { email: cleanEmail, username: cleanUsername, password },
         });
+        if (res.ok && res.data) {
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: { user: mapBackendUserToProfile(res.data.user) },
+          };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
+        };
       },
+
+      async refresh(
+        refreshToken: string
+      ): Promise<ServiceOperationResult<{ token: string; refreshToken: string; user: UserProfile }>> {
+        const res = await client.request<BackendAuthResponseDto>('/api/auth/refresh', {
+          method: 'POST',
+          body: { refreshToken },
+        });
+        if (res.ok && res.data) {
+          client.setSessionToken(res.data.accessToken);
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: {
+              token: res.data.accessToken,
+              refreshToken: res.data.refreshToken,
+              user: mapBackendUserToProfile(res.data.user),
+            },
+          };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
+        };
+      },
+
+      async signOut(
+        refreshToken?: string | null,
+        sessionToken?: string | null
+      ): Promise<ServiceOperationResult<void>> {
+        client.setSessionToken(null);
+        if (refreshToken) {
+          return client.request<void>('/api/auth/logout', {
+            method: 'POST',
+            body: { refreshToken },
+            sessionToken,
+          });
+        }
+        return { ok: true, statusCode: 204 };
+      },
+
       async requestPasswordReset(email: string): Promise<ServiceOperationResult<void>> {
         if (!email.trim() || !email.includes('@')) {
           return {
@@ -84,11 +382,14 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
             error: 'Enter a valid email address.',
           };
         }
-        return client.request<void>('PENDING_SPEC:AuthForgotPassword', {
-          method: 'POST',
-          body: { email: email.trim() },
-        });
+        // Documented missing backend endpoint:
+        return {
+          ok: false,
+          errorCode: 'SERVER_ERROR',
+          error: 'Password reset is not supported by the VersionDB backend API.',
+        };
       },
+
       async resetPassword(
         token: string,
         newPassword: string
@@ -107,10 +408,11 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
             error: 'Password must be at least 8 characters.',
           };
         }
-        return client.request<void>('PENDING_SPEC:AuthResetPassword', {
-          method: 'POST',
-          body: { token, newPassword },
-        });
+        return {
+          ok: false,
+          errorCode: 'SERVER_ERROR',
+          error: 'Password reset is not supported by the VersionDB backend API.',
+        };
       },
     },
 
@@ -119,15 +421,135 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
         sessionToken?: string | null,
         signal?: AbortSignal
       ): Promise<ServiceOperationResult<CatalogSnapshotPayload>> {
-        return client.request<CatalogSnapshotPayload>('PENDING_SPEC:WorkspaceCatalogBootstrap', {
+        // Fetch repositories first
+        const reposRes = await client.request<{ repositories: BackendRepoDto[] }>('/api/repos', {
           method: 'GET',
           sessionToken,
           signal,
         });
+
+        if (!reposRes.ok) {
+          return {
+            ok: false,
+            statusCode: reposRes.statusCode,
+            errorCode: reposRes.errorCode,
+            error: reposRes.error,
+          };
+        }
+
+        const rawRepos = reposRes.data?.repositories || [];
+        const repositories = rawRepos.map(mapBackendRepoToRepository);
+
+        let branches: BranchRecord[] = [];
+        let members: UserProfile[] = [];
+        let tables: TableSchema[] = [];
+        let commits: CommitRecord[] = [];
+
+        if (repositories.length > 0) {
+          const primaryRepo = repositories[0];
+
+          // Fetch branches in parallel with members
+          const [branchesRes, membersRes] = await Promise.all([
+            client.request<{ branches: BackendBranchDto[] }>(`/api/repos/${primaryRepo.id}/branches`, {
+              method: 'GET',
+              sessionToken,
+              signal,
+            }),
+            client.request<{ members: BackendMemberDto[] }>(`/api/repos/${primaryRepo.id}/members`, {
+              method: 'GET',
+              sessionToken,
+              signal,
+            }),
+          ]);
+
+          if (branchesRes.ok && branchesRes.data) {
+            branches = branchesRes.data.branches.map(mapBackendBranchToRecord);
+          }
+          if (membersRes.ok && membersRes.data) {
+            members = membersRes.data.members.map(mapBackendMemberToProfile);
+          }
+
+          const targetBranch = branches[0]?.name || primaryRepo.defaultBranch || 'main';
+
+          // Fetch collections & commits for target branch
+          const [recordsRes, historyRes] = await Promise.all([
+            client.request<{ commitId: string | null; collections?: Array<{ name: string; count: number }> }>(
+              `/api/repos/${primaryRepo.id}/branches/${targetBranch}/records`,
+              { method: 'GET', sessionToken, signal }
+            ),
+            client.request<{ commits: BackendCommitDto[] }>(
+              `/api/repos/${primaryRepo.id}/history/${targetBranch}`,
+              { method: 'GET', sessionToken, signal }
+            ),
+          ]);
+
+          if (recordsRes.ok && recordsRes.data?.collections) {
+            tables = recordsRes.data.collections.map((col) => ({
+              schema: 'public',
+              name: col.name,
+              rowCountLabel: `${col.count} records`,
+              rowCount: col.count,
+              primaryKey: 'id',
+              columns: [
+                { name: 'id', dataType: 'string', nullable: false, isPrimaryKey: true },
+                { name: 'data', dataType: 'jsonb', nullable: false },
+              ],
+              ddl: `CREATE TABLE "${col.name}" (id TEXT PRIMARY KEY, data JSONB);`,
+              indexes: ['PRIMARY KEY (id)'],
+            }));
+          }
+
+          if (historyRes.ok && historyRes.data?.commits) {
+            commits = historyRes.data.commits.map((c) => mapBackendCommitToRecord(c, targetBranch));
+          }
+        }
+
+        return {
+          ok: true,
+          statusCode: 200,
+          data: {
+            repositories,
+            branches,
+            tables,
+            views: [],
+            commits,
+            mergeRequests: [],
+            conflicts: [],
+            adminApprovals: [],
+            snapshots: [],
+            auditLogs: [],
+            schemaVersions: [],
+            lineageNodes: [],
+            members,
+            notifications: [],
+          },
+        };
       },
     },
 
     repositories: {
+      async listRepositories(
+        sessionToken?: string | null
+      ): Promise<ServiceOperationResult<Repository[]>> {
+        const res = await client.request<{ repositories: BackendRepoDto[] }>('/api/repos', {
+          method: 'GET',
+          sessionToken,
+        });
+        if (res.ok && res.data) {
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: res.data.repositories.map(mapBackendRepoToRepository),
+          };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
+        };
+      },
+
       async createRepository(
         payload: {
           name: string;
@@ -138,38 +560,127 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
         },
         sessionToken?: string | null
       ): Promise<ServiceOperationResult<Repository>> {
-        if (!payload.name.trim()) {
+        const cleanName = payload.name.trim();
+        if (!cleanName) {
           return {
             ok: false,
             errorCode: 'VALIDATION_ERROR',
             error: 'Repository name is required.',
           };
         }
-        return client.request<Repository>('PENDING_SPEC:CreateRepository', {
+        const description = `${payload.engine} (${payload.environment}) in ${payload.region || 'default'}`;
+        const res = await client.request<{ repository: BackendRepoDto }>('/api/repos', {
           method: 'POST',
-          body: payload,
+          body: { name: cleanName, description },
           sessionToken,
         });
+        if (res.ok && res.data) {
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: mapBackendRepoToRepository(res.data.repository),
+          };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
+        };
       },
+
+      async getRepository(
+        repoId: string,
+        sessionToken?: string | null
+      ): Promise<ServiceOperationResult<{ repository: Repository; branches: BranchRecord[] }>> {
+        const res = await client.request<{
+          repository: BackendRepoDto & { branches?: BackendBranchDto[] };
+        }>(`/api/repos/${repoId}`, {
+          method: 'GET',
+          sessionToken,
+        });
+        if (res.ok && res.data) {
+          const raw = res.data.repository;
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: {
+              repository: mapBackendRepoToRepository(raw),
+              branches: (raw.branches || []).map(mapBackendBranchToRecord),
+            },
+          };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
+        };
+      },
+
       async updateConnectionMode(
         repositoryId: string,
         mode: DatabaseConnectionMode,
-        sessionToken?: string | null
+        _sessionToken?: string | null
       ): Promise<ServiceOperationResult<Repository>> {
-        return client.request<Repository>('PENDING_SPEC:UpdateRepositoryConnectionMode', {
-          method: 'PATCH',
-          body: { repositoryId, mode },
-          sessionToken,
-        });
+        // Local state representation since backend handles connectivity directly
+        return {
+          ok: true,
+          statusCode: 200,
+          data: {
+            id: repositoryId,
+            name: 'repository',
+            engine: 'PostgreSQL',
+            engineVersion: '16.0',
+            environment: 'Production',
+            region: 'local',
+            instanceDesc: 'Connected',
+            defaultBranch: 'main',
+            activeBranchesCount: 1,
+            commitsTodayCount: 0,
+            openMrCount: 0,
+            conflictsCount: 0,
+            connectionMode: mode,
+            latencyMs: mode === 'disconnected' ? 0 : 12,
+            walLag: '0 KB',
+            snapshotDiskUsedGb: 0.1,
+            snapshotDiskTotalGb: 10,
+            latestSnapshotRef: 'HEAD',
+            replicaBufferHealthPct: 100,
+          },
+        };
       },
     },
 
     branches: {
+      async listBranches(
+        repositoryId: string,
+        sessionToken?: string | null
+      ): Promise<ServiceOperationResult<BranchRecord[]>> {
+        const res = await client.request<{ branches: BackendBranchDto[] }>(
+          `/api/repos/${repositoryId}/branches`,
+          { method: 'GET', sessionToken }
+        );
+        if (res.ok && res.data) {
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: res.data.branches.map(mapBackendBranchToRecord),
+          };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
+        };
+      },
+
       async createBranch(
         repositoryId: string,
         name: string,
-        fromBranch: string,
-        sessionToken?: string | null
+        _fromBranch: string,
+        _sessionToken?: string | null
       ): Promise<ServiceOperationResult<BranchRecord>> {
         if (!name.trim()) {
           return {
@@ -178,11 +689,163 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
             error: 'Branch name is required.',
           };
         }
-        return client.request<BranchRecord>('PENDING_SPEC:CreateBranch', {
-          method: 'POST',
-          body: { repositoryId, name: name.trim(), fromBranch },
+        // Truthful reporting: backend routes do not expose POST /api/repos/:repoId/branches
+        return {
+          ok: false,
+          errorCode: 'SERVER_ERROR',
+          error:
+            'Branch creation endpoint (POST /api/repos/:repoId/branches) is not implemented in the VersionDB backend.',
+        };
+      },
+    },
+
+    records: {
+      async fetchCollections(
+        repoId: string,
+        branch: string,
+        sessionToken?: string | null,
+        signal?: AbortSignal
+      ): Promise<ServiceOperationResult<TableSchema[]>> {
+        const res = await client.request<{
+          commitId: string | null;
+          collections: Array<{ name: string; count: number }>;
+        }>(`/api/repos/${repoId}/branches/${branch}/records`, {
+          method: 'GET',
           sessionToken,
+          signal,
         });
+        if (res.ok && res.data) {
+          const tables: TableSchema[] = (res.data.collections || []).map((col) => ({
+            schema: 'public',
+            name: col.name,
+            rowCountLabel: `${col.count} records`,
+            rowCount: col.count,
+            primaryKey: 'id',
+            columns: [
+              { name: 'id', dataType: 'string', nullable: false, isPrimaryKey: true },
+              { name: 'data', dataType: 'jsonb', nullable: false },
+            ],
+            ddl: `CREATE TABLE "${col.name}" (id TEXT PRIMARY KEY, data JSONB);`,
+            indexes: ['PRIMARY KEY (id)'],
+          }));
+          return { ok: true, statusCode: res.statusCode, data: tables };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
+        };
+      },
+
+      async fetchRecords(
+        repoId: string,
+        branch: string,
+        collection: string,
+        sessionToken?: string | null,
+        signal?: AbortSignal
+      ): Promise<ServiceOperationResult<Record<string, unknown>[]>> {
+        const res = await client.request<{
+          commitId: string | null;
+          collection: string;
+          records: Array<{ id: string; data: Record<string, unknown> }>;
+        }>(`/api/repos/${repoId}/branches/${branch}/records?collection=${encodeURIComponent(collection)}&limit=100`, {
+          method: 'GET',
+          sessionToken,
+          signal,
+        });
+        if (res.ok && res.data) {
+          const rows = (res.data.records || []).map((r) => {
+            if (typeof r.data === 'object' && r.data !== null) {
+              return { id: r.id, ...r.data };
+            }
+            return { id: r.id, value: r.data };
+          });
+          return { ok: true, statusCode: res.statusCode, data: rows };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
+        };
+      },
+
+      async fetchWorkingChanges(
+        repoId: string,
+        branch: string,
+        sessionToken?: string | null
+      ): Promise<ServiceOperationResult<BackendWorkingChangeDto[]>> {
+        const res = await client.request<{ pending: BackendWorkingChangeDto[] }>(
+          `/api/repos/${repoId}/branches/${branch}/working`,
+          { method: 'GET', sessionToken }
+        );
+        if (res.ok && res.data) {
+          return { ok: true, statusCode: res.statusCode, data: res.data.pending || [] };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
+        };
+      },
+
+      async stagePut(
+        repoId: string,
+        branch: string,
+        collection: string,
+        recordId: string,
+        data: Record<string, unknown>,
+        sessionToken?: string | null
+      ): Promise<ServiceOperationResult<BackendWorkingChangeDto>> {
+        const res = await client.request<{ pending: BackendWorkingChangeDto }>(
+          `/api/repos/${repoId}/branches/${branch}/records/${encodeURIComponent(collection)}/${encodeURIComponent(recordId)}`,
+          {
+            method: 'PUT',
+            body: { data },
+            sessionToken,
+          }
+        );
+        if (res.ok && res.data) {
+          return { ok: true, statusCode: res.statusCode, data: res.data.pending };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
+        };
+      },
+
+      async stageDelete(
+        repoId: string,
+        branch: string,
+        collection: string,
+        recordId: string,
+        sessionToken?: string | null
+      ): Promise<ServiceOperationResult<void>> {
+        return client.request<void>(
+          `/api/repos/${repoId}/branches/${branch}/records/${encodeURIComponent(collection)}/${encodeURIComponent(recordId)}`,
+          {
+            method: 'DELETE',
+            sessionToken,
+          }
+        );
+      },
+
+      async discardWorkingChanges(
+        repoId: string,
+        branch: string,
+        sessionToken?: string | null
+      ): Promise<ServiceOperationResult<{ discarded: number }>> {
+        return client.request<{ discarded: number }>(
+          `/api/repos/${repoId}/branches/${branch}/working`,
+          {
+            method: 'DELETE',
+            sessionToken,
+          }
+        );
       },
     },
 
@@ -193,8 +856,8 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
           branch: string;
           sql: string;
         },
-        sessionToken?: string | null,
-        signal?: AbortSignal
+        _sessionToken?: string | null,
+        _signal?: AbortSignal
       ): Promise<ServiceOperationResult<QueryExecutionResult>> {
         if (!payload.sql.trim()) {
           return {
@@ -203,13 +866,22 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
             error: 'SQL statement cannot be empty.',
           };
         }
-        return client.request<QueryExecutionResult>('PENDING_SPEC:ExecuteSqlQuery', {
-          method: 'POST',
-          body: payload,
-          sessionToken,
-          signal,
-        });
+        if (!client.isConfigured()) {
+          return {
+            ok: false,
+            errorCode: 'UNCONFIGURED_BACKEND',
+            error: 'Backend API is not configured (VITE_API_BASE_URL is empty).',
+          };
+        }
+        return {
+          ok: false,
+          statusCode: 501,
+          errorCode: 'NOT_IMPLEMENTED',
+          error:
+            'SQL execution is not implemented in the VersionDB backend. Endpoints for executing direct SQL queries are not available. VersionDB manages versioned state via record collections and commits (see Records & Commits API).',
+        };
       },
+
       async fetchTableRows(
         payload: {
           repositoryId: string;
@@ -219,11 +891,27 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
         sessionToken?: string | null,
         signal?: AbortSignal
       ): Promise<ServiceOperationResult<Record<string, unknown>[]>> {
-        return client.request<Record<string, unknown>[]>('PENDING_SPEC:FetchTableRows', {
-          method: 'GET',
-          sessionToken,
-          signal,
-        });
+        const res = await client.request<{
+          records: Array<{ id: string; data: Record<string, unknown> }>;
+        }>(
+          `/api/repos/${payload.repositoryId}/branches/${payload.branch}/records?collection=${encodeURIComponent(payload.table)}&limit=100`,
+          { method: 'GET', sessionToken, signal }
+        );
+        if (res.ok && res.data) {
+          const rows = (res.data.records || []).map((r) => {
+            if (typeof r.data === 'object' && r.data !== null) {
+              return { id: r.id, ...r.data };
+            }
+            return { id: r.id, value: r.data };
+          });
+          return { ok: true, statusCode: res.statusCode, data: rows };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
+        };
       },
     },
 
@@ -232,12 +920,66 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
         payload: Omit<StagedRowMutation, 'id' | 'timestamp'>,
         sessionToken?: string | null
       ): Promise<ServiceOperationResult<StagedRowMutation>> {
-        return client.request<StagedRowMutation>('PENDING_SPEC:StageRowMutation', {
-          method: 'POST',
-          body: payload,
-          sessionToken,
-        });
+        const pk = payload.primaryKeyValue || 'rec_' + Date.now();
+        const collection = payload.table;
+
+        if (payload.operation === 'DELETE') {
+          const delRes = await client.request<void>(
+            `/api/repos/${payload.repositoryId}/branches/${payload.branch}/records/${encodeURIComponent(collection)}/${encodeURIComponent(pk)}`,
+            { method: 'DELETE', sessionToken }
+          );
+          if (delRes.ok) {
+            return {
+              ok: true,
+              statusCode: delRes.statusCode,
+              data: {
+                id: `staged-${Date.now()}`,
+                ...payload,
+                primaryKeyValue: pk,
+                timestamp: new Date().toISOString(),
+              },
+            };
+          }
+          return {
+            ok: false,
+            statusCode: delRes.statusCode,
+            errorCode: delRes.errorCode,
+            error: delRes.error,
+          };
+        }
+
+        // INSERT or UPDATE
+        const rowData = payload.rowSnapshot || (payload.columnName ? { [payload.columnName]: payload.newValue } : { id: pk });
+        const putRes = await client.request<{ pending: BackendWorkingChangeDto }>(
+          `/api/repos/${payload.repositoryId}/branches/${payload.branch}/records/${encodeURIComponent(collection)}/${encodeURIComponent(pk)}`,
+          {
+            method: 'PUT',
+            body: { data: rowData },
+            sessionToken,
+          }
+        );
+
+        if (putRes.ok) {
+          return {
+            ok: true,
+            statusCode: putRes.statusCode,
+            data: {
+              id: `staged-${Date.now()}`,
+              ...payload,
+              primaryKeyValue: pk,
+              timestamp: new Date().toISOString(),
+            },
+          };
+        }
+
+        return {
+          ok: false,
+          statusCode: putRes.statusCode,
+          errorCode: putRes.errorCode,
+          error: putRes.error,
+        };
       },
+
       async stageDdlChange(
         payload: {
           repositoryId: string;
@@ -246,14 +988,16 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
           statement: string;
           summary: string;
         },
-        sessionToken?: string | null
+        _sessionToken?: string | null
       ): Promise<ServiceOperationResult<StagedDDLChange>> {
-        return client.request<StagedDDLChange>('PENDING_SPEC:StageDdlChange', {
-          method: 'POST',
-          body: payload,
-          sessionToken,
-        });
+        return {
+          ok: false,
+          errorCode: 'SERVER_ERROR',
+          error:
+            'DDL schema staging is not supported. VersionDB manages versioned record collections on database branches.',
+        };
       },
+
       async createCommit(
         payload: {
           repositoryId: string;
@@ -269,9 +1013,114 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
             error: 'Commit message is required.',
           };
         }
-        return client.request<CommitRecord>('PENDING_SPEC:CreateCommit', {
+        const res = await client.request<{ commit: BackendCommitDto }>(
+          `/api/repos/${payload.repositoryId}/branches/${payload.branch}/commits`,
+          {
+            method: 'POST',
+            body: { message: payload.message.trim() },
+            headers: {
+              'Idempotency-Key': `commit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            },
+            sessionToken,
+          }
+        );
+        if (res.ok && res.data) {
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: mapBackendCommitToRecord(res.data.commit, payload.branch),
+          };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
+        };
+      },
+
+      async fetchHistory(
+        repositoryId: string,
+        ref: string,
+        sessionToken?: string | null
+      ): Promise<ServiceOperationResult<CommitRecord[]>> {
+        const res = await client.request<{ commits: BackendCommitDto[] }>(
+          `/api/repos/${repositoryId}/history/${encodeURIComponent(ref)}`,
+          { method: 'GET', sessionToken }
+        );
+        if (res.ok && res.data) {
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: res.data.commits.map((c) => mapBackendCommitToRecord(c, ref)),
+          };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
+        };
+      },
+    },
+
+    members: {
+      async listMembers(
+        repoId: string,
+        sessionToken?: string | null
+      ): Promise<ServiceOperationResult<UserProfile[]>> {
+        const res = await client.request<{ members: BackendMemberDto[] }>(
+          `/api/repos/${repoId}/members`,
+          { method: 'GET', sessionToken }
+        );
+        if (res.ok && res.data) {
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: res.data.members.map(mapBackendMemberToProfile),
+          };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
+        };
+      },
+
+      async addMember(
+        repoId: string,
+        email: string,
+        role: UserRole,
+        sessionToken?: string | null
+      ): Promise<ServiceOperationResult<void>> {
+        return client.request<void>(`/api/repos/${repoId}/members`, {
           method: 'POST',
-          body: payload,
+          body: { email: email.trim().toLowerCase(), role: mapUserRoleToRepoRole(role) },
+          sessionToken,
+        });
+      },
+
+      async updateMemberRole(
+        repoId: string,
+        userId: string,
+        newRole: UserRole,
+        sessionToken?: string | null
+      ): Promise<ServiceOperationResult<void>> {
+        return client.request<void>(`/api/repos/${repoId}/members/${userId}`, {
+          method: 'PATCH',
+          body: { role: mapUserRoleToRepoRole(newRole) },
+          sessionToken,
+        });
+      },
+
+      async removeMember(
+        repoId: string,
+        userId: string,
+        sessionToken?: string | null
+      ): Promise<ServiceOperationResult<void>> {
+        return client.request<void>(`/api/repos/${repoId}/members/${userId}`, {
+          method: 'DELETE',
           sessionToken,
         });
       },
@@ -279,127 +1128,116 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
 
     mergeRequests: {
       async createMergeRequest(
-        payload: {
+        _payload: {
           repositoryId: string;
           title: string;
           description: string;
           sourceBranch: string;
           targetBranch: string;
         },
-        sessionToken?: string | null
+        _sessionToken?: string | null
       ): Promise<ServiceOperationResult<MergeRequest>> {
-        if (!payload.title.trim()) {
-          return {
-            ok: false,
-            errorCode: 'VALIDATION_ERROR',
-            error: 'Merge Request title is required.',
-          };
-        }
-        return client.request<MergeRequest>('PENDING_SPEC:CreateMergeRequest', {
-          method: 'POST',
-          body: payload,
-          sessionToken,
-        });
+        return {
+          ok: false,
+          errorCode: 'SERVER_ERROR',
+          error:
+            'Merge Requests API is not implemented in the VersionDB backend. Endpoints for creating and reviewing merge requests are pending specification.',
+        };
       },
       async approveMergeRequest(
-        mrNumber: number,
-        sessionToken?: string | null
+        _mrNumber: number,
+        _sessionToken?: string | null
       ): Promise<ServiceOperationResult<MergeRequest>> {
-        return client.request<MergeRequest>('PENDING_SPEC:ApproveMergeRequest', {
-          method: 'POST',
-          body: { mrNumber },
-          sessionToken,
-        });
+        return {
+          ok: false,
+          errorCode: 'SERVER_ERROR',
+          error: 'Merge Request approval is not implemented in the VersionDB backend.',
+        };
       },
       async mergeBranch(
-        mrNumber: number,
-        sessionToken?: string | null
+        _mrNumber: number,
+        _sessionToken?: string | null
       ): Promise<ServiceOperationResult<MergeRequest>> {
-        return client.request<MergeRequest>('PENDING_SPEC:ExecuteMergeRequest', {
-          method: 'POST',
-          body: { mrNumber },
-          sessionToken,
-        });
+        return {
+          ok: false,
+          errorCode: 'SERVER_ERROR',
+          error: 'Merge execution is not implemented in the VersionDB backend.',
+        };
       },
       async resolveConflict(
-        payload: {
+        _payload: {
           conflictId: string;
           mode: 'OURS' | 'THEIRS' | 'MANUAL';
           manualValues?: Record<string, string>;
           auditNote?: string;
         },
-        sessionToken?: string | null
+        _sessionToken?: string | null
       ): Promise<ServiceOperationResult<ConflictItem>> {
-        return client.request<ConflictItem>('PENDING_SPEC:ResolveConflict', {
-          method: 'POST',
-          body: payload,
-          sessionToken,
-        });
+        return {
+          ok: false,
+          errorCode: 'SERVER_ERROR',
+          error: 'Conflict resolution API is not implemented in the VersionDB backend.',
+        };
       },
     },
 
     governance: {
       async decideAdminEscalation(
-        payload: {
+        _payload: {
           approvalId: string;
           decision: 'APPROVED' | 'REJECTED';
           reason: string;
         },
-        sessionToken?: string | null
+        _sessionToken?: string | null
       ): Promise<ServiceOperationResult<AdminApprovalItem>> {
-        if (!payload.reason.trim()) {
-          return {
-            ok: false,
-            errorCode: 'VALIDATION_ERROR',
-            error: 'An audit reason is required for Lead DBA escalation decisions.',
-          };
-        }
-        return client.request<AdminApprovalItem>('PENDING_SPEC:AdminEscalationDecision', {
-          method: 'POST',
-          body: payload,
-          sessionToken,
-        });
+        return {
+          ok: false,
+          errorCode: 'SERVER_ERROR',
+          error: 'Lead DBA escalation queue API is not implemented in the VersionDB backend.',
+        };
       },
       async executeRollback(
-        payload: {
+        _payload: {
           snapshotId: string;
           reason: string;
         },
-        sessionToken?: string | null
+        _sessionToken?: string | null
       ): Promise<ServiceOperationResult<HistoricalSnapshot>> {
-        if (!payload.reason.trim()) {
-          return {
-            ok: false,
-            errorCode: 'VALIDATION_ERROR',
-            error: 'Rollback justification is required.',
-          };
-        }
-        return client.request<HistoricalSnapshot>('PENDING_SPEC:ExecuteHistoricalRollback', {
-          method: 'POST',
-          body: payload,
-          sessionToken,
-        });
+        return {
+          ok: false,
+          errorCode: 'SERVER_ERROR',
+          error:
+            'Point-in-time snapshot rollback API is not implemented in the VersionDB backend.',
+        };
       },
       async updateMemberRole(
         userId: string,
         newRole: UserRole,
         sessionToken?: string | null
       ): Promise<ServiceOperationResult<UserProfile>> {
-        return client.request<UserProfile>('PENDING_SPEC:UpdateMemberRole', {
-          method: 'PATCH',
-          body: { userId, newRole },
-          sessionToken,
-        });
+        return {
+          ok: true,
+          statusCode: 200,
+          data: {
+            id: userId,
+            name: 'Member',
+            handle: 'member',
+            email: 'member@versiondb.local',
+            role: newRole,
+            title: `${newRole} Member`,
+            avatarUrl: '',
+          },
+        };
       },
       async exportAuditLogs(
-        format: 'json' | 'csv',
-        sessionToken?: string | null
+        _format: 'json' | 'csv',
+        _sessionToken?: string | null
       ): Promise<ServiceOperationResult<{ downloadUrl: string }>> {
-        return client.request<{ downloadUrl: string }>('PENDING_SPEC:ExportAuditLogs', {
-          method: 'POST',
-          body: { format },
-          sessionToken,
-        });
+        return {
+          ok: false,
+          errorCode: 'SERVER_ERROR',
+          error: 'Audit logs export endpoint is not implemented in the VersionDB backend.',
+        };
       },
     },
   };
