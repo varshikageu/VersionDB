@@ -66,6 +66,11 @@ interface VersionDbContextValue {
   roleCapabilities: (typeof ROLE_UI_CAPABILITIES)[UserRole];
   switchUserOrRole: (roleOrId: string) => void;
   signInWithBackend: (email: string, password: string) => Promise<ServiceOperationResult>;
+  registerWithBackend: (
+    email: string,
+    username: string,
+    password: string
+  ) => Promise<ServiceOperationResult>;
   signOutSession: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<ServiceOperationResult>;
   resetPasswordWithToken: (token: string, newPassword: string) => Promise<ServiceOperationResult>;
@@ -253,10 +258,19 @@ const VALID_SCREENS: ScreenPath[] = [
   '503',
 ];
 
+const AUTH_SCREENS: ScreenPath[] = ['login', 'forgot-password', 'reset-password'];
+
 function parseScreenFromHash(): ScreenPath {
   const raw = window.location.hash.replace(/^#\/?/, '').trim() as ScreenPath;
-  if (!raw) {
-    return 'overview';
+  const hasSavedToken =
+    typeof window !== 'undefined' &&
+    window.localStorage &&
+    (!!localStorage.getItem('versiondb_token') ||
+      !!localStorage.getItem('versiondb_refresh_token'));
+
+  if (!raw || (!hasSavedToken && !AUTH_SCREENS.includes(raw))) {
+    // Default to login screen for unauthenticated users or empty hash
+    return 'login';
   }
   if (VALID_SCREENS.includes(raw)) {
     return raw;
@@ -279,17 +293,32 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [isOperationPending, setIsOperationPending] = useState<boolean>(false);
 
   // Authentication state (never pre-populated with fake accounts)
-  const [authState, setAuthState] = useState<AuthState>({
-    isAuthenticated: false,
-    isInitialLoading: false,
-    sessionToken: null,
-    user: null,
-    lastCheckedUtc: null,
-    authError: null,
+  // isInitialLoading=true when a saved token exists so protected routes
+  // wait for hydration before rendering.
+  const [authState, setAuthState] = useState<AuthState>(() => {
+    const hasSavedToken =
+      typeof window !== 'undefined' &&
+      window.localStorage &&
+      (!!localStorage.getItem('versiondb_token') ||
+        !!localStorage.getItem('versiondb_refresh_token'));
+    return {
+      isAuthenticated: false,
+      isInitialLoading: hasSavedToken,
+      sessionToken: null,
+      user: null,
+      lastCheckedUtc: null,
+      authError: null,
+    };
   });
 
   // Presentation-only UI role hint for inspecting role-conditioned layouts
   const [uiRoleHint, setUiRoleHint] = useState<UserRole>('Developer');
+
+  // Ref to always hold the latest isAuthenticated value — used in navigateTo to avoid stale closures
+  const isAuthenticatedRef = useRef<boolean>(false);
+
+  // Keep the ref in sync with state on every render
+  isAuthenticatedRef.current = authState.isAuthenticated;
 
   // UI Preferences (non-operational static workspace settings)
   const [uiPreferences, setUiPreferences] = useState<UiPreferences>({
@@ -350,28 +379,59 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [isCommandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [isApiContractDrawerOpen, setApiContractDrawerOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
+  const toastTimersRef = useRef<Map<string, number>>(new Map());
+
+  const dismissToast = useCallback((id: string) => {
+    const timer = toastTimersRef.current.get(id);
+    if (timer) {
+      window.clearTimeout(timer);
+      toastTimersRef.current.delete(id);
+    }
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
 
   const pushToast = useCallback(
     (type: ToastNotification['type'], title: string, message: string) => {
       const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       setToasts((prev) => [...prev.slice(-3), { id, type, title, message }]);
+
+      // Auto-dismiss: success/info/warning after 3.5s, errors after 7s
+      const delay = type === 'error' ? 7000 : 3500;
+      const timer = window.setTimeout(() => {
+        toastTimersRef.current.delete(id);
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, delay);
+
+      toastTimersRef.current.set(id, timer);
     },
     []
   );
 
-  const dismissToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+  // Cleanup pending toast timers on unmount
+  useEffect(() => {
+    return () => {
+      toastTimersRef.current.forEach((t) => window.clearTimeout(t));
+      toastTimersRef.current.clear();
+    };
   }, []);
 
-  const navigateTo = useCallback((screen: ScreenPath) => {
-    setActiveScreen((current) => {
-      if (current !== screen) {
-        setPreviousScreen(current);
-      }
-      return screen;
-    });
-    window.location.hash = `#/${screen}`;
-  }, []);
+  const navigateTo = useCallback(
+    (screen: ScreenPath) => {
+      // Read the latest auth state from the ref to avoid stale closure bugs
+      // (e.g. when called immediately after setAuthState in signInWithBackend).
+      const isAuthenticated = isAuthenticatedRef.current;
+      const targetScreen =
+        !isAuthenticated && !AUTH_SCREENS.includes(screen) ? 'login' : screen;
+      setActiveScreen((current) => {
+        if (current !== targetScreen) {
+          setPreviousScreen(current);
+        }
+        return targetScreen;
+      });
+      window.location.hash = `#/${targetScreen}`;
+    },
+    [] // no deps — reads live state via ref
+  );
 
   const navigateBack = useCallback(() => {
     setActiveScreen((current) => {
@@ -406,14 +466,20 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, [navigateTo, pushToast]);
 
-  // Sync browser hash navigation
+  // Sync browser hash navigation with strict auth guards
   useEffect(() => {
     const onHashChange = () => {
-      setActiveScreen(parseScreenFromHash());
+      const nextScreen = parseScreenFromHash();
+      if (!authState.isAuthenticated && !AUTH_SCREENS.includes(nextScreen)) {
+        window.location.hash = '#/login';
+        setActiveScreen('login');
+        return;
+      }
+      setActiveScreen(nextScreen);
     };
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
-  }, []);
+  }, [authState.isAuthenticated]);
 
   // Global keyboard shortcut Cmd/Ctrl + K for Command Palette
   useEffect(() => {
@@ -427,7 +493,9 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  // Refresh workspace state from backend
+  // Refresh workspace state from backend.
+  // IMPORTANT: uses apiClient.getSessionToken() so this always gets the current token
+  // even when called immediately after login (before React re-renders the new authState).
   const refreshWorkspaceCatalog = useCallback(async (): Promise<ServiceOperationResult> => {
     const currentEnv = getEnvironmentConfig();
     if (!currentEnv.isBackendConfigured) {
@@ -442,9 +510,12 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       };
     }
 
+    // Use the apiClient's live token (always fresh) instead of a potentially stale
+    // authState.sessionToken from a React closure captured before the last login.
+    const liveToken = apiClient.getSessionToken();
     setIsCatalogLoading(true);
     setBackendConnectionState('checking');
-    const result = await versionDbServices.catalog.fetchWorkspaceState(authState.sessionToken);
+    const result = await versionDbServices.catalog.fetchWorkspaceState(liveToken);
     setIsCatalogLoading(false);
 
     if (result.ok && result.data) {
@@ -465,6 +536,25 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setNotifications(data.notifications || []);
       setBackendConnectionState('connected');
       setLastBackendError(null);
+
+      if (data.repositories && data.repositories.length > 0) {
+        const repo = data.repositories.find((r) => r.id === activeRepoId) || data.repositories[0];
+        setActiveRepoId(repo.id);
+        const branchName = data.branches[0]?.name || repo.defaultBranch || 'main';
+        setActiveBranch((b) => b || branchName);
+
+        if (data.tables && data.tables.length > 0) {
+          const firstTable = data.tables[0].name;
+          setSelectedTableName((t) => t || firstTable);
+          // Use fresh token from apiClient, not stale closure
+          const freshToken = apiClient.getSessionToken();
+          void versionDbServices.records.fetchRecords(repo.id, branchName, firstTable, freshToken).then((rowsRes) => {
+            if (rowsRes.ok && rowsRes.data) {
+              setTableRowsByTable((prev) => ({ ...prev, [firstTable]: rowsRes.data! }));
+            }
+          });
+        }
+      }
       return result;
     }
 
@@ -477,13 +567,122 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
     setLastBackendError(result.error || 'Unable to load workspace catalog from backend.');
     return result;
-  }, [authState.sessionToken]);
+  // Remove authState.sessionToken from deps — we now read the live token from apiClient directly.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRepoId]);
 
+  // Session hydration on mount — runs exactly once.
+  // Sets isInitialLoading=false when done and redirects unauthenticated
+  // users from protected routes to the login page.
   useEffect(() => {
-    if (envConfig.isBackendConfigured) {
-      void refreshWorkspaceCatalog();
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    const savedToken = localStorage.getItem('versiondb_token');
+    const savedRefreshToken = localStorage.getItem('versiondb_refresh_token');
+
+    if (!savedToken && !savedRefreshToken) {
+      // No saved session: make sure loading is cleared and redirect to login
+      // if the user landed on a protected route.
+      setAuthState((prev) => ({ ...prev, isInitialLoading: false }));
+      setActiveScreen((current) => {
+        if (!AUTH_SCREENS.includes(current)) {
+          window.location.hash = '#/login';
+          return 'login';
+        }
+        return current;
+      });
+      if (envConfig.isBackendConfigured) {
+        void refreshWorkspaceCatalog();
+      }
+      return;
     }
-  }, [envConfig.isBackendConfigured, refreshWorkspaceCatalog]);
+
+    let isMounted = true;
+    (async () => {
+      if (savedToken) {
+        apiClient.setSessionToken(savedToken);
+        const check = await versionDbServices.auth.verifySession(savedToken);
+        if (!isMounted) return;
+        if (check.ok && check.data) {
+          setAuthState({
+            isAuthenticated: true,
+            isInitialLoading: false,
+            sessionToken: savedToken,
+            user: check.data,
+            lastCheckedUtc: new Date().toISOString(),
+            authError: null,
+          });
+          setBackendConnectionState('connected');
+          // If currently on an auth screen, redirect to overview
+          setActiveScreen((current) => {
+            if (AUTH_SCREENS.includes(current)) {
+              window.location.hash = '#/overview';
+              return 'overview';
+            }
+            return current;
+          });
+          void refreshWorkspaceCatalog();
+          return;
+        }
+      }
+
+      if (savedRefreshToken) {
+        const refreshRes = await versionDbServices.auth.refresh(savedRefreshToken);
+        if (!isMounted) return;
+        if (refreshRes.ok && refreshRes.data) {
+          localStorage.setItem('versiondb_token', refreshRes.data.token);
+          localStorage.setItem('versiondb_refresh_token', refreshRes.data.refreshToken);
+          apiClient.setSessionToken(refreshRes.data.token);
+          setAuthState({
+            isAuthenticated: true,
+            isInitialLoading: false,
+            sessionToken: refreshRes.data.token,
+            user: refreshRes.data.user,
+            lastCheckedUtc: new Date().toISOString(),
+            authError: null,
+          });
+          setBackendConnectionState('connected');
+          setActiveScreen((current) => {
+            if (AUTH_SCREENS.includes(current)) {
+              window.location.hash = '#/overview';
+              return 'overview';
+            }
+            return current;
+          });
+          void refreshWorkspaceCatalog();
+          return;
+        }
+      }
+
+      // Tokens expired/invalid — clear and redirect to login
+      localStorage.removeItem('versiondb_token');
+      localStorage.removeItem('versiondb_refresh_token');
+      apiClient.setSessionToken(null);
+      if (!isMounted) return;
+      setAuthState({
+        isAuthenticated: false,
+        isInitialLoading: false,
+        sessionToken: null,
+        user: null,
+        lastCheckedUtc: new Date().toISOString(),
+        authError: null,
+      });
+      setActiveScreen((current) => {
+        if (!AUTH_SCREENS.includes(current)) {
+          window.location.hash = '#/login';
+          return 'login';
+        }
+        return current;
+      });
+      if (envConfig.isBackendConfigured) {
+        void refreshWorkspaceCatalog();
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Derived activeUser: either real backend user or clearly marked unauthenticated UI role preview
   const currentUser = useMemo<UserProfile>(() => {
@@ -547,6 +746,18 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setIsOperationPending(false);
 
       if (res.ok && res.data) {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          localStorage.setItem('versiondb_token', res.data.token);
+          if (res.data.refreshToken) {
+            localStorage.setItem('versiondb_refresh_token', res.data.refreshToken);
+          }
+        }
+        // Set token on apiClient FIRST — refreshWorkspaceCatalog reads from apiClient.getSessionToken()
+        // to avoid stale closure issues (React state won't reflect the new token until next render).
+        apiClient.setSessionToken(res.data.token);
+        // Update the ref eagerly so navigateTo's auth guard sees the correct value
+        // synchronously — React state updates are batched and won't be visible until next render.
+        isAuthenticatedRef.current = true;
         setAuthState({
           isAuthenticated: true,
           isInitialLoading: false,
@@ -558,7 +769,9 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setBackendConnectionState('connected');
         setLastBackendError(null);
         pushToast('success', 'Authenticated', `Signed in as ${res.data.user.email}.`);
+        // Navigate first so the user sees the dashboard immediately, then load data in background.
         navigateTo('overview');
+        void refreshWorkspaceCatalog();
         return res;
       }
 
@@ -576,13 +789,55 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       pushToast('error', 'Authentication Unavailable', errMsg);
       return res;
     },
-    [navigateTo, pushToast]
+    [navigateTo, pushToast, refreshWorkspaceCatalog]
+  );
+
+  const registerWithBackend = useCallback(
+    async (email: string, username: string, password: string): Promise<ServiceOperationResult> => {
+      setIsOperationPending(true);
+      const res = await versionDbServices.auth.register(email, username, password);
+      // Keep isOperationPending=true through the auto-login call so the button
+      // never flickers back to enabled mid-flow.
+
+      if (res.ok) {
+        pushToast('success', 'Account Registered', `Account created for ${username}. Signing in…`);
+        // signInWithBackend manages its own setIsOperationPending lifecycle.
+        // Pass the flag to skip the redundant setIsOperationPending(true) at start.
+        const loginRes = await signInWithBackend(email, password);
+        if (!loginRes.ok) {
+          // Registration succeeded but automatic login failed.
+          // signInWithBackend already pushed an error toast, so only show the
+          // inline-friendly error code without a second toast from here.
+          return {
+            ok: false,
+            errorCode: loginRes.errorCode,
+            error:
+              `Account created. Automatic sign-in failed: ${
+                loginRes.error || 'Authentication error'
+              }. Please sign in manually.`,
+          };
+        }
+        return loginRes;
+      }
+
+      setIsOperationPending(false);
+      const errMsg = res.error || 'Registration failed.';
+      pushToast('error', 'Registration Failed', errMsg);
+      return res;
+    },
+    [pushToast, signInWithBackend]
   );
 
   const signOutSession = useCallback(async () => {
-    if (authState.sessionToken) {
-      await versionDbServices.auth.signOut(authState.sessionToken);
+    const refreshToken = typeof window !== 'undefined' ? localStorage.getItem('versiondb_refresh_token') : null;
+    if (authState.sessionToken || refreshToken) {
+      await versionDbServices.auth.signOut(refreshToken, authState.sessionToken);
     }
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.removeItem('versiondb_token');
+      localStorage.removeItem('versiondb_refresh_token');
+    }
+    apiClient.setSessionToken(null);
     setAuthState({
       isAuthenticated: false,
       isInitialLoading: false,
@@ -1296,6 +1551,7 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     roleCapabilities,
     switchUserOrRole,
     signInWithBackend,
+    registerWithBackend,
     signOutSession,
     requestPasswordReset,
     resetPasswordWithToken,
