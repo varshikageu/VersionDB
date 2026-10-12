@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { VERSIONDB_LOGO_URL } from '../../config/appConfig';
+import { VersionDbLogo } from '../common/VersionDbLogo';
 import { useVersionDb } from '../../context/VersionDbContext';
 import { UserRole } from '../../types/versiondb';
 
@@ -113,9 +113,7 @@ export const TopHeader: React.FC = () => {
           onClick={() => navigateTo('overview')}
           className="flex items-center gap-2.5 text-left group focus:outline-none"
         >
-          <div className="w-7 h-7 rounded-md bg-gradient-to-b from-primary to-primary-container flex items-center justify-center text-on-primary shadow-sm">
-            <span className="material-symbols-outlined text-base">database</span>
-          </div>
+          <VersionDbLogo size={28} className="bg-primary text-white" />
           <span className="text-lg font-bold tracking-tight text-slate-900 font-headline">
             VersionDB
           </span>

@@ -63,6 +63,7 @@ export interface ServiceOperationResult<T = unknown> {
   errorCode?:
     | 'UNCONFIGURED_BACKEND'
     | 'PENDING_BACKEND_SPEC'
+    | 'NOT_IMPLEMENTED'
     | 'UNAUTHORIZED'
     | 'FORBIDDEN'
     | 'NOT_FOUND'

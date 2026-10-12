@@ -15,7 +15,12 @@ export function requestContext(logger: Logger): RequestHandler {
       metrics.inc('http_requests_total', { method: req.method, route, status: String(res.statusCode) });
       metrics.observe('http_request_duration_seconds', { method: req.method, route }, seconds);
       if (req.path !== '/health') {
-        logger.info('request', { requestId: req.id, method: req.method, route, status: res.statusCode, ms: Math.round(seconds * 1000), userId: req.auth?.userId });
+        const logPayload: Record<string, unknown> = { requestId: req.id, method: req.method, route, status: res.statusCode, ms: Math.round(seconds * 1000), userId: req.auth?.userId };
+        // Log the actual URL for unmatched routes to help diagnose 404s from the frontend
+        if (!req.route) {
+          logPayload['originalUrl'] = req.originalUrl;
+        }
+        logger.info('request', logPayload);
       }
     });
     next();

@@ -4,10 +4,11 @@ import path from 'node:path';
 import { Pool } from 'pg';
 import { loadEnv } from '../../config/env';
 import { sha256Hex } from '../../shared/crypto';
+import { fileURLToPath } from 'node:url';
 
 function findDatabaseDir(): string {
   if (process.env.DATABASE_DIR) return path.resolve(process.env.DATABASE_DIR);
-  let dir = __dirname;
+  let dir = path.dirname(fileURLToPath(import.meta.url));;
   for (let i = 0; i < 8; i++) {
     const candidate = path.join(dir, 'database');
     if (fs.existsSync(path.join(candidate, 'migrations'))) return candidate;

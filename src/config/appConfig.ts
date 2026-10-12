@@ -108,29 +108,72 @@ export const BACKEND_INTEGRATION_CONTRACT: ApiEndpointContract[] = [
   {
     module: 'Authentication & Session',
     method: 'POST',
-    endpoint: 'PENDING_SPEC (Auth Session Login / Logout / Token Refresh)',
+    endpoint: '/api/auth/login, /api/auth/register, /api/auth/me, /api/auth/refresh, /api/auth/logout',
     description:
-      'Authenticates user credentials, issues session token/cookie, and returns authoritative server-enforced RBAC role.',
+      'Authenticates user credentials, registers users, verifies JWT bearer session, and provides rotating refresh token handling.',
     requiredRole: 'Viewer',
-    requestSchema: 'Pending backend specification: LoginRequest { email, password }',
-    responseSchema: 'Pending backend specification: AuthSessionResponse { user, expiresAtUtc }',
-    contractStatus: 'PENDING_BACKEND_SPEC',
+    requestSchema: 'LoginRequest { identifier, password } | RegisterRequest { email, username, password }',
+    responseSchema: 'AuthResult { accessToken, refreshToken, expiresIn, user: { id, email, username, globalRole } }',
+    contractStatus: 'CONFIGURED',
   },
   {
     module: 'Repositories & Connections',
     method: 'GET',
-    endpoint: 'PENDING_SPEC (List & Register Repositories / Replica Telemetry)',
+    endpoint: '/api/repos, /api/repos/:repoId',
     description:
-      'Returns registered database repositories, live connection states, latency, WAL replication lag, and storage metrics.',
+      'Lists repositories accessible to user and creates new repositories with initial protected main branch.',
     requiredRole: 'Viewer',
-    requestSchema: 'Pending backend specification: RepositoryFilterParams',
-    responseSchema: 'Pending backend specification: RepositoryListResponse { repositories: Repository[] }',
-    contractStatus: 'PENDING_BACKEND_SPEC',
+    requestSchema: 'CreateRepoBody { name, description }',
+    responseSchema: 'RepositoryListResponse { repositories: RepositoryWithRole[] }',
+    contractStatus: 'CONFIGURED',
+  },
+  {
+    module: 'Records & Staging',
+    method: 'GET',
+    endpoint: '/api/repos/:repoId/branches/:branch/records, /working',
+    description:
+      'Reads branch collections and records, stages record PUT/DELETE mutations in caller working state, and clears working changes.',
+    requiredRole: 'Developer',
+    requestSchema: 'PutRecordBody { data: Record<string, unknown> }',
+    responseSchema: 'RecordListResponse | WorkingChangeResponse',
+    contractStatus: 'CONFIGURED',
+  },
+  {
+    module: 'Commits & Snapshot History',
+    method: 'POST',
+    endpoint: '/api/repos/:repoId/branches/:branch/commits, /api/repos/:repoId/history/:ref',
+    description:
+      'Persists staged changes into an immutable content-addressed commit with CAS ref movement, and retrieves ref commit history.',
+    requiredRole: 'Developer',
+    requestSchema: 'CommitBody { message: string }',
+    responseSchema: 'CommitResponse { commit: Commit & { changeCount: number } }',
+    contractStatus: 'CONFIGURED',
+  },
+  {
+    module: 'Members & Access Control',
+    method: 'GET',
+    endpoint: '/api/repos/:repoId/members, /api/repos/:repoId/members/:userId',
+    description:
+      'Lists repository members, assigns roles (owner, maintainer, reviewer, viewer), and removes members with last-owner protection.',
+    requiredRole: 'Admin',
+    requestSchema: 'MemberBody { email, role } | MemberRoleBody { role }',
+    responseSchema: 'MemberListResponse { members: Member[] }',
+    contractStatus: 'CONFIGURED',
+  },
+  {
+    module: 'Branches (Listing)',
+    method: 'GET',
+    endpoint: '/api/repos/:repoId/branches',
+    description:
+      'Lists branches for repository including headCommitId and protection status. Note: branch creation endpoint POST /branches is not implemented.',
+    requiredRole: 'Viewer',
+    responseSchema: 'BranchListResponse { branches: Branch[] }',
+    contractStatus: 'CONFIGURED',
   },
   {
     module: 'SQL Execution Engine',
     method: 'POST',
-    endpoint: 'PENDING_SPEC (Isolated SQL Query & Explain Plan Execution)',
+    endpoint: 'PENDING_SPEC (No direct SQL execution endpoint implemented)',
     description:
       'Executes SQL statements against a real database branch connection without auto-committing to VersionDB.',
     requiredRole: 'Viewer',
@@ -141,7 +184,7 @@ export const BACKEND_INTEGRATION_CONTRACT: ApiEndpointContract[] = [
   {
     module: 'Schema & Catalog Introspection',
     method: 'GET',
-    endpoint: 'PENDING_SPEC (Catalog Tables, Views, Columns, Indexes, Lineage)',
+    endpoint: 'PENDING_SPEC (Catalog introspection via DDL not implemented; managed as collections)',
     description:
       'Introspects live PostgreSQL catalog metadata, primary/foreign keys, DDL definitions, schema versions, and dependency lineage.',
     requiredRole: 'Viewer',
@@ -149,20 +192,9 @@ export const BACKEND_INTEGRATION_CONTRACT: ApiEndpointContract[] = [
     contractStatus: 'PENDING_BACKEND_SPEC',
   },
   {
-    module: 'Staging & Commits',
-    method: 'POST',
-    endpoint: 'PENDING_SPEC (Stage Row/DDL Changes & Persist Immutable Commit)',
-    description:
-      'Validates staged DML row mutations and DDL schema changes and commits an immutable VersionDB snapshot.',
-    requiredRole: 'Developer',
-    requestSchema: 'Pending backend specification: CreateCommitRequest { branch, message, stagedChanges }',
-    responseSchema: 'Pending backend specification: CommitRecord',
-    contractStatus: 'PENDING_BACKEND_SPEC',
-  },
-  {
     module: 'Branches & Diffs',
     method: 'GET',
-    endpoint: 'PENDING_SPEC (Branch Management & 3-Way Schema/Row Diff Computation)',
+    endpoint: 'PENDING_SPEC (Diff engine endpoint not implemented in backend)',
     description:
       'Creates copy-on-write database branches and computes deterministic DDL and primary-key row diffs between branches.',
     requiredRole: 'Viewer',
@@ -172,7 +204,7 @@ export const BACKEND_INTEGRATION_CONTRACT: ApiEndpointContract[] = [
   {
     module: 'Merge Requests & Conflict Validation',
     method: 'POST',
-    endpoint: 'PENDING_SPEC (Merge Request Lifecycle & 3-Way Conflict Resolution)',
+    endpoint: 'PENDING_SPEC (Merge request endpoints not implemented in backend)',
     description:
       'Manages Merge Requests, reviewer approvals, schema/record collision resolution (OURS/THEIRS/MANUAL), and protected branch merges.',
     requiredRole: 'Developer',
@@ -182,7 +214,7 @@ export const BACKEND_INTEGRATION_CONTRACT: ApiEndpointContract[] = [
   {
     module: 'Admin Approvals & Governance',
     method: 'POST',
-    endpoint: 'PENDING_SPEC (Lead DBA Escalation Queue & RBAC Member Management)',
+    endpoint: 'PENDING_SPEC (Lead DBA escalation queue endpoint not implemented in backend)',
     description:
       'Records mandatory Lead DBA escalation decisions and enforces server-side RBAC role assignments.',
     requiredRole: 'Admin',
@@ -192,7 +224,7 @@ export const BACKEND_INTEGRATION_CONTRACT: ApiEndpointContract[] = [
   {
     module: 'Time Machine & Rollback',
     method: 'POST',
-    endpoint: 'PENDING_SPEC (Historical WAL Checkpoints & Point-in-Time Rollback)',
+    endpoint: 'PENDING_SPEC (Rollback endpoint not implemented in backend)',
     description:
       'Lists verified WAL LSN snapshots, generates deterministic rollback SQL plans, and executes audited rollbacks.',
     requiredRole: 'Admin',
@@ -202,7 +234,7 @@ export const BACKEND_INTEGRATION_CONTRACT: ApiEndpointContract[] = [
   {
     module: 'Audit Logs & Notifications',
     method: 'GET',
-    endpoint: 'PENDING_SPEC (Immutable Governance Ledger & Operational Notifications)',
+    endpoint: 'PENDING_SPEC (Audit logged internally to DB table; no public HTTP query route)',
     description:
       'Streams cryptographically chained audit events and user notification alerts.',
     requiredRole: 'Viewer',

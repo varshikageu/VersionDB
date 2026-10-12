@@ -88,6 +88,16 @@ const VersionDbShell: React.FC = () => {
     );
   }
 
+  // Protect all other routes — redirect unauthenticated users to login
+  if (!authState.isAuthenticated) {
+    return (
+      <>
+        <LoginScreen />
+        <GlobalModals />
+      </>
+    );
+  }
+
   const renderScreen = () => {
     switch (activeScreen) {
       case 'overview':
@@ -150,7 +160,7 @@ const VersionDbShell: React.FC = () => {
       <TopHeader />
       <Sidebar />
       <div className="pl-64">
-        <main className="w-full pt-14 px-gutter-desktop min-h-screen bg-background">
+        <main className="w-full pt-18 pb-14 px-6 lg:px-8 max-w-[1600px] min-h-screen bg-background">
           {renderScreen()}
         </main>
       </div>
