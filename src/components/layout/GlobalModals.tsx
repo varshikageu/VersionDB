@@ -205,59 +205,122 @@ export const GlobalModals: React.FC = () => {
 
       {/* 2. Create Branch Modal */}
       {isCreateBranchModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl border border-outline-variant/30 w-full max-w-md overflow-hidden">
-            <div className="px-5 py-4 border-b border-surface-container flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary">call_split</span>
-                <h3 className="font-headline text-title-md text-on-surface">
-                  Create Database Branch
-                </h3>
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isOperationPending) {
+              setBranchModalError(null);
+              setCreateBranchModalOpen(false);
+            }
+          }}
+        >
+          <div className="bg-white rounded-xl shadow-2xl border border-outline-variant/30 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="px-6 py-4.5 border-b border-surface-container flex items-center justify-between bg-surface-container-lowest">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                  <span className="material-symbols-outlined text-xl">call_split</span>
+                </div>
+                <div>
+                  <h3 className="font-headline text-base font-semibold text-on-surface">
+                    Create Database Branch
+                  </h3>
+                  <p className="font-body-sm text-xs text-secondary mt-0.5">
+                    {activeRepo ? `Repository: ${activeRepo.name}` : 'Isolate schema & record changes'}
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
-                onClick={() => setCreateBranchModalOpen(false)}
-                className="text-secondary hover:text-on-surface"
+                disabled={isOperationPending}
+                onClick={() => {
+                  setBranchModalError(null);
+                  setCreateBranchModalOpen(false);
+                }}
+                className="text-slate-400 hover:text-slate-600 rounded-lg p-1 transition-colors disabled:opacity-40"
+                aria-label="Close modal"
               >
-                <span className="material-symbols-outlined text-lg">close</span>
+                <span className="material-symbols-outlined text-xl">close</span>
               </button>
             </div>
-            <div className="p-5 space-y-4">
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-4">
               {branchModalError && (
-                <div className="p-3 rounded-lg bg-error-container/30 border border-error/30 font-body-sm text-xs text-error">
-                  {branchModalError}
+                <div className="p-3.5 rounded-lg bg-error-container/30 border border-error/30 flex items-start gap-2.5 text-xs text-error">
+                  <span className="material-symbols-outlined text-base shrink-0 mt-0.5">error</span>
+                  <span className="leading-relaxed">{branchModalError}</span>
                 </div>
               )}
+
+              {/* Source Branch */}
               <div>
-                <label className="block font-label-mono text-label-sm uppercase text-secondary mb-1.5">
-                  Source Branch (Copy-on-Write Base)
+                <label className="block text-xs font-medium text-slate-700 mb-1">
+                  Source Branch (Base)
                 </label>
-                <input
-                  type="text"
-                  value={sourceBranchForNew || activeBranch}
-                  onChange={(e) => setSourceBranchForNew(e.target.value)}
-                  placeholder="e.g., main"
-                  className="w-full rounded-lg border border-outline-variant/40 bg-surface-container-lowest px-3 py-2 font-code-sm text-xs text-on-surface"
-                />
+                {branches && branches.length > 0 ? (
+                  <select
+                    value={sourceBranchForNew || activeBranch || branches[0]?.name || 'main'}
+                    onChange={(e) => {
+                      setSourceBranchForNew(e.target.value);
+                      if (branchModalError) setBranchModalError(null);
+                    }}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 font-code-sm text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                  >
+                    {branches.map((b) => (
+                      <option key={b.name} value={b.name}>
+                        {b.name} {b.isProtected ? '(protected)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={sourceBranchForNew || activeBranch || 'main'}
+                    onChange={(e) => {
+                      setSourceBranchForNew(e.target.value);
+                      if (branchModalError) setBranchModalError(null);
+                    }}
+                    placeholder="main"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 font-code-sm text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                  />
+                )}
+                <p className="mt-1 text-[11px] text-slate-500">
+                  The branch whose schema and committed records this new branch starts from.
+                </p>
               </div>
+
+              {/* New Branch Name */}
               <div>
-                <label className="block font-label-mono text-label-sm uppercase text-secondary mb-1.5">
-                  New Branch Name
+                <label className="block text-xs font-medium text-slate-700 mb-1">
+                  New Branch Name <span className="text-error">*</span>
                 </label>
                 <input
                   type="text"
                   value={newBranchName}
-                  onChange={(e) => setNewBranchName(e.target.value)}
-                  placeholder="feat/branch-name"
-                  className="w-full rounded-lg border border-outline-variant/40 bg-surface-container-lowest px-3 py-2 font-code-sm text-xs text-on-surface focus:outline-none focus:border-primary"
+                  onChange={(e) => {
+                    setNewBranchName(e.target.value);
+                    if (branchModalError) setBranchModalError(null);
+                  }}
+                  placeholder="e.g. feature/add-customers-table"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 font-code-sm text-xs text-on-surface placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
                 />
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Use 1-64 letters, numbers, hyphens, or underscores. Cannot contain &quot;..&quot; or end with &quot;.lock&quot;.
+                </p>
               </div>
             </div>
-            <div className="px-5 py-3 bg-surface-container-low border-t border-surface-container flex items-center justify-end gap-2">
+
+            {/* Modal Footer */}
+            <div className="px-6 py-3.5 bg-slate-50 border-t border-surface-container flex items-center justify-end gap-2.5">
               <button
                 type="button"
-                onClick={() => setCreateBranchModalOpen(false)}
-                className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-secondary hover:text-on-surface"
+                disabled={isOperationPending}
+                onClick={() => {
+                  setBranchModalError(null);
+                  setCreateBranchModalOpen(false);
+                }}
+                className="px-4 py-2 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-200/60 transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -265,20 +328,48 @@ export const GlobalModals: React.FC = () => {
                 type="button"
                 disabled={isOperationPending}
                 onClick={async () => {
+                  const trimmedName = newBranchName.trim();
+                  if (!trimmedName) {
+                    setBranchModalError('Branch name is required.');
+                    return;
+                  }
+                  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(trimmedName)) {
+                    setBranchModalError('Branch name must start with an alphanumeric character and contain only letters, numbers, dots, hyphens, or underscores (up to 64 chars).');
+                    return;
+                  }
+                  if (trimmedName.includes('..') || trimmedName.endsWith('.lock')) {
+                    setBranchModalError('Branch name cannot contain ".." or end with ".lock".');
+                    return;
+                  }
+                  const source = sourceBranchForNew || activeBranch || (branches[0]?.name ?? 'main');
+                  if (trimmedName === source) {
+                    setBranchModalError(`New branch name cannot be identical to source branch "${source}".`);
+                    return;
+                  }
+
                   setBranchModalError(null);
-                  const res = await createBranch(
-                    newBranchName,
-                    sourceBranchForNew || activeBranch || 'main'
-                  );
+                  const res = await createBranch(trimmedName, source);
                   if (!res.ok) {
                     setBranchModalError(res.error || 'Branch creation failed.');
                   } else {
                     setNewBranchName('');
+                    setBranchModalError(null);
+                    setCreateBranchModalOpen(false);
                   }
                 }}
-                className="px-4 py-1.5 rounded-lg bg-gradient-to-b from-primary to-primary-container text-on-primary text-xs font-semibold shadow-sm hover:opacity-95 disabled:opacity-50"
+                className="px-4.5 py-2 rounded-lg bg-primary hover:bg-primary-hover text-white text-xs font-semibold shadow-xs transition-colors flex items-center gap-2 disabled:opacity-50"
               >
-                {isOperationPending ? 'Creating...' : 'Create & Checkout'}
+                {isOperationPending ? (
+                  <>
+                    <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+                    <span>Creating…</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-sm">call_split</span>
+                    <span>Create &amp; Checkout</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -398,101 +489,169 @@ export const GlobalModals: React.FC = () => {
 
       {/* 4. Register Repository Modal */}
       {isCreateRepoModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl border border-outline-variant/30 w-full max-w-md overflow-hidden">
-            <div className="px-5 py-4 border-b border-surface-container flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary">dns</span>
-                <h3 className="font-headline text-title-md text-on-surface">
-                  Register Database Repository
-                </h3>
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isOperationPending) {
+              setRepoModalError(null);
+              setCreateRepoModalOpen(false);
+            }
+          }}
+        >
+          <div className="bg-white rounded-xl shadow-2xl border border-outline-variant/30 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="px-6 py-4.5 border-b border-surface-container flex items-center justify-between bg-surface-container-lowest">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                  <span className="material-symbols-outlined text-xl">database</span>
+                </div>
+                <div>
+                  <h3 className="font-headline text-base font-semibold text-on-surface">
+                    Register Database Repository
+                  </h3>
+                  <p className="font-body-sm text-xs text-secondary mt-0.5">
+                    Connect an external database to VersionDB version control.
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
-                onClick={() => setCreateRepoModalOpen(false)}
-                className="text-secondary hover:text-on-surface"
+                disabled={isOperationPending}
+                onClick={() => {
+                  setRepoModalError(null);
+                  setCreateRepoModalOpen(false);
+                }}
+                className="text-slate-400 hover:text-slate-600 rounded-lg p-1 transition-colors disabled:opacity-40"
+                aria-label="Close modal"
               >
-                <span className="material-symbols-outlined text-lg">close</span>
+                <span className="material-symbols-outlined text-xl">close</span>
               </button>
             </div>
-            <div className="p-5 space-y-3.5">
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto">
               {repoModalError && (
-                <div className="p-3 rounded-lg bg-error-container/30 border border-error/30 font-body-sm text-xs text-error">
-                  {repoModalError}
+                <div className="p-3.5 rounded-lg bg-error-container/30 border border-error/30 flex items-start gap-2.5 text-xs text-error">
+                  <span className="material-symbols-outlined text-base shrink-0 mt-0.5">error</span>
+                  <span className="leading-relaxed">{repoModalError}</span>
                 </div>
               )}
-              <div>
-                <label className="block font-label-mono text-label-sm uppercase text-secondary mb-1">
-                  Repository Identifier
-                </label>
-                <input
-                  type="text"
-                  value={repoName}
-                  onChange={(e) => setRepoName(e.target.value)}
-                  placeholder="Enter repository identifier"
-                  className="w-full rounded-lg border border-outline-variant/40 bg-surface-container-lowest px-3 py-2 font-code-sm text-xs"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-label-mono text-label-sm uppercase text-secondary mb-1">
-                    Engine
-                  </label>
-                  <select
-                    value={repoEngine}
-                    onChange={(e) => setRepoEngine(e.target.value)}
-                    className="w-full rounded-lg border border-outline-variant/40 bg-surface-container-lowest px-3 py-2 font-body-sm text-xs"
-                  >
-                    <option value="PostgreSQL">PostgreSQL</option>
-                    <option value="Aurora PG">Aurora PG</option>
-                  </select>
+
+              {/* Section 1: Identification & Engine */}
+              <div className="space-y-3.5">
+                <div className="flex items-center gap-2 pb-1 border-b border-surface-container/60">
+                  <span className="material-symbols-outlined text-sm text-primary">badge</span>
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Repository Identity
+                  </span>
                 </div>
+
                 <div>
-                  <label className="block font-label-mono text-label-sm uppercase text-secondary mb-1">
-                    Environment
-                  </label>
-                  <select
-                    value={repoEnv}
-                    onChange={(e) => setRepoEnv(e.target.value as any)}
-                    className="w-full rounded-lg border border-outline-variant/40 bg-surface-container-lowest px-3 py-2 font-body-sm text-xs"
-                  >
-                    <option value="Production">Production</option>
-                    <option value="Staging">Staging</option>
-                    <option value="Development">Development</option>
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-label-mono text-label-sm uppercase text-secondary mb-1">
-                    Cloud Region
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    Repository Identifier <span className="text-error">*</span>
                   </label>
                   <input
                     type="text"
-                    value={repoRegion}
-                    onChange={(e) => setRepoRegion(e.target.value)}
-                    placeholder="Region identifier"
-                    className="w-full rounded-lg border border-outline-variant/40 bg-surface-container-lowest px-3 py-2 font-code-sm text-xs"
+                    value={repoName}
+                    onChange={(e) => {
+                      setRepoName(e.target.value);
+                      if (repoModalError) setRepoModalError(null);
+                    }}
+                    placeholder="e.g. analytics-cluster-prod"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 font-code-sm text-xs text-on-surface placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
                   />
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Unique identifier used across CLI operations and API routes.
+                  </p>
                 </div>
-                <div>
-                  <label className="block font-label-mono text-label-sm uppercase text-secondary mb-1">
-                    Default Protected Branch
-                  </label>
-                  <input
-                    type="text"
-                    value={repoDefaultBranch}
-                    onChange={(e) => setRepoDefaultBranch(e.target.value)}
-                    className="w-full rounded-lg border border-outline-variant/40 bg-surface-container-lowest px-3 py-2 font-code-sm text-xs"
-                  />
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      Database Engine
+                    </label>
+                    <select
+                      value={repoEngine}
+                      onChange={(e) => setRepoEngine(e.target.value)}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                    >
+                      <option value="PostgreSQL">PostgreSQL</option>
+                      <option value="Aurora PG">Aurora PostgreSQL</option>
+                      <option value="Neon">Neon (Serverless PG)</option>
+                      <option value="Supabase">Supabase PostgreSQL</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      Deployment Environment
+                    </label>
+                    <select
+                      value={repoEnv}
+                      onChange={(e) => setRepoEnv(e.target.value as any)}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                    >
+                      <option value="Production">Production</option>
+                      <option value="Staging">Staging</option>
+                      <option value="Development">Development</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 2: Operational Configuration */}
+              <div className="space-y-3.5">
+                <div className="flex items-center gap-2 pb-1 border-b border-surface-container/60">
+                  <span className="material-symbols-outlined text-sm text-primary">settings_suggest</span>
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Operational Configuration
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      Region / Host Placement
+                    </label>
+                    <input
+                      type="text"
+                      value={repoRegion}
+                      onChange={(e) => setRepoRegion(e.target.value)}
+                      placeholder="e.g. us-east-1 or local"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 font-code-sm text-xs text-on-surface placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                    />
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Geographic deployment region or cluster zone.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      Default Protected Branch
+                    </label>
+                    <input
+                      type="text"
+                      value={repoDefaultBranch}
+                      onChange={(e) => setRepoDefaultBranch(e.target.value)}
+                      placeholder="main"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 font-code-sm text-xs text-on-surface placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                    />
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Primary trunk branch for schema governance.
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
-            <div className="px-5 py-3 bg-surface-container-low border-t border-surface-container flex items-center justify-end gap-2">
+
+            {/* Modal Footer */}
+            <div className="px-6 py-3.5 bg-slate-50 border-t border-surface-container flex items-center justify-end gap-2.5">
               <button
                 type="button"
-                onClick={() => setCreateRepoModalOpen(false)}
-                className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-secondary hover:text-on-surface"
+                disabled={isOperationPending}
+                onClick={() => {
+                  setRepoModalError(null);
+                  setCreateRepoModalOpen(false);
+                }}
+                className="px-4 py-2 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-200/60 transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -500,24 +659,46 @@ export const GlobalModals: React.FC = () => {
                 type="button"
                 disabled={isOperationPending}
                 onClick={async () => {
+                  const trimmedName = repoName.trim();
+                  if (!trimmedName) {
+                    setRepoModalError('Repository identifier is required.');
+                    return;
+                  }
+                  if (!/^[a-zA-Z0-9_.-]+$/.test(trimmedName)) {
+                    setRepoModalError('Repository name may only contain alphanumeric characters, hyphens, and underscores.');
+                    return;
+                  }
+                  const branch = repoDefaultBranch.trim() || 'main';
                   setRepoModalError(null);
                   const res = await createRepository(
-                    repoName,
+                    trimmedName,
                     repoEngine,
                     repoEnv,
-                    repoRegion,
-                    repoDefaultBranch
+                    repoRegion.trim() || 'local',
+                    branch
                   );
                   if (!res.ok) {
                     setRepoModalError(res.error || 'Failed to register repository.');
                   } else {
                     setRepoName('');
                     setRepoRegion('');
+                    setRepoModalError(null);
+                    setCreateRepoModalOpen(false);
                   }
                 }}
-                className="px-4 py-1.5 rounded-lg bg-gradient-to-b from-primary to-primary-container text-on-primary text-xs font-semibold shadow-sm hover:opacity-95 disabled:opacity-50"
+                className="px-4.5 py-2 rounded-lg bg-primary hover:bg-primary-hover text-white text-xs font-semibold shadow-xs transition-colors flex items-center gap-2 disabled:opacity-50"
               >
-                {isOperationPending ? 'Connecting...' : 'Connect Repository'}
+                {isOperationPending ? (
+                  <>
+                    <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+                    <span>Registering…</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-sm">add</span>
+                    <span>Register Repository</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
