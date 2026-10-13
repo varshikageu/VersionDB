@@ -3,7 +3,7 @@ import { DEFAULT_BRANCH } from '../../config/constants';
 import type { Actor, Branch, Repository, RepositoryWithRole } from '../../domain/types';
 import type { StoragePort } from '../../ports/storage.port';
 import type { UnitOfWork } from '../../ports/repositories.port';
-import { conflict } from '../../shared/errors';
+import { conflict, notFound } from '../../shared/errors';
 import { isUniqueViolation } from '../../shared/pg-errors';
 import type { AuditService } from '../audit/audit.service';
 import type { MemberService } from '../member/member.service';
@@ -48,5 +48,121 @@ export class RepositoryService {
   async listBranches(actor: Actor, repoId: string): Promise<Branch[]> {
     await this.members.authorize(actor, repoId, 'repo:read');
     return this.uow.repos.branches.list(repoId);
+  }
+
+  /**
+   * Creates a new branch pointing to the source branch's head commit.
+   * Requires maintainer or owner role on the repository.
+   */
+  async createBranch(
+    actor: Actor,
+    repoId: string,
+    input: { name: string; sourceBranch: string }
+  ): Promise<Branch & { sourceBranch: string }> {
+    await this.members.authorize(actor, repoId, 'branch:create');
+
+    const source = await this.uow.repos.branches.find(repoId, input.sourceBranch);
+    if (!source) {
+      throw notFound(`Source branch '${input.sourceBranch}'`);
+    }
+
+    const existing = await this.uow.repos.branches.find(repoId, input.name);
+    if (existing) {
+      throw conflict('BRANCH_EXISTS', `A branch with name '${input.name}' already exists in this repository`);
+    }
+
+    try {
+      return await this.uow.transaction(async (repos) => {
+        const branch = await repos.branches.create({
+          repoId,
+          name: input.name,
+          headCommitId: source.headCommitId,
+          createdBy: actor.userId,
+        });
+
+        await this.audit.log(repos, {
+          repoId,
+          actorId: actor.userId,
+          action: 'branch.create',
+          entityType: 'branch',
+          entityId: branch.id,
+          metadata: {
+            name: branch.name,
+            sourceBranch: source.name,
+            headCommitId: source.headCommitId,
+          },
+          ip: actor.ip,
+        });
+
+        return { ...branch, sourceBranch: source.name };
+      });
+    } catch (e) {
+      if (isUniqueViolation(e)) {
+        throw conflict('BRANCH_EXISTS', `A branch with name '${input.name}' already exists in this repository`);
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * Deletes a branch from the repository.
+   * Rejects deletion of default branch, protected branches, or branches with open merge requests.
+   * Requires maintainer or owner role.
+   */
+  async deleteBranch(
+    actor: Actor,
+    repoId: string,
+    branchName: string,
+    options?: { activeBranch?: string }
+  ): Promise<{ deleted: boolean; branchName: string }> {
+    const { repo } = await this.members.authorize(actor, repoId, 'branch:delete');
+
+    if (branchName === repo.defaultBranch) {
+      throw conflict('DEFAULT_BRANCH_PROTECTED', `Cannot delete default branch '${branchName}' of the repository`);
+    }
+
+    if (options?.activeBranch && branchName === options.activeBranch) {
+      throw conflict('ACTIVE_BRANCH_CONFLICT', `Cannot delete currently active branch '${branchName}'. Switch to another branch first.`);
+    }
+
+    try {
+      return await this.uow.transaction(async (repos) => {
+        const branch = await repos.branches.lock(repoId, branchName);
+        if (!branch) {
+          throw notFound(`Branch '${branchName}'`);
+        }
+
+        if (branch.protection) {
+          throw conflict('PROTECTED_BRANCH', `Branch '${branchName}' is protected and cannot be deleted`);
+        }
+
+        const hasOpenMr = await repos.branches.hasOpenMergeRequests(repoId, branchName);
+        if (hasOpenMr) {
+          throw conflict('BRANCH_IN_USE', `Branch '${branchName}' cannot be deleted because it has open merge requests`);
+        }
+
+        const deleted = await repos.branches.delete(repoId, branchName);
+
+        await this.audit.log(repos, {
+          repoId,
+          actorId: actor.userId,
+          action: 'branch.delete',
+          entityType: 'branch',
+          entityId: branch.id,
+          metadata: {
+            name: branch.name,
+            headCommitId: branch.headCommitId,
+          },
+          ip: actor.ip,
+        });
+
+        return { deleted, branchName };
+      });
+    } catch (e) {
+      if ((e as any)?.code === '42501' || (e as Error)?.message?.includes('protected')) {
+        throw conflict('PROTECTED_BRANCH', `Branch '${branchName}' is protected and cannot be deleted`);
+      }
+      throw e;
+    }
   }
 }
