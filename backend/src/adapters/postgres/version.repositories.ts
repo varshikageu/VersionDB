@@ -43,6 +43,19 @@ export class PgBranchRepo implements BranchRepo {
       [repoId, name, requiredApprovals],
     );
   }
+  async delete(repoId: string, name: string): Promise<boolean> {
+    const r = await this.db.query('DELETE FROM branches WHERE repo_id = $1 AND name = $2', [repoId, name]);
+    return (r.rowCount ?? 0) === 1;
+  }
+  async hasOpenMergeRequests(repoId: string, name: string): Promise<boolean> {
+    const r = await this.db.query(
+      `SELECT 1 FROM merge_requests
+       WHERE repo_id = $1 AND (source_branch_name = $2 OR target_branch_name = $2) AND status = 'open'
+       LIMIT 1`,
+      [repoId, name]
+    );
+    return (r.rowCount ?? 0) > 0;
+  }
 }
 
 const COMMIT_SELECT = `SELECT c.*, u.username AS author_name FROM commits c JOIN users u ON u.id = c.author_id`;

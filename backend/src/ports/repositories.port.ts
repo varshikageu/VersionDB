@@ -45,6 +45,8 @@ export interface BranchRepo {
   /** Transaction-scoped permission to move a protected head (merge / rollback only). */
   allowProtectedWrite(): Promise<void>;
   protect(repoId: string, name: string, requiredApprovals: number): Promise<void>;
+  delete(repoId: string, name: string): Promise<boolean>;
+  hasOpenMergeRequests(repoId: string, name: string): Promise<boolean>;
 }
 
 export interface NewCommit {

@@ -13,8 +13,8 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx --test src/services/__tests__/versionDbServices.test.ts backend/src/__tests__/auth-error-handling.test.ts",
-    "test:backend": "tsx --test backend/src/__tests__/auth-error-handling.test.ts"
+    "test": "tsx --test src/services/__tests__/versionDbServices.test.ts backend/src/__tests__/auth-error-handling.test.ts backend/src/__tests__/branch-creation.test.ts",
+    "test:backend": "tsx --test backend/src/__tests__/auth-error-handling.test.ts backend/src/__tests__/branch-creation.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

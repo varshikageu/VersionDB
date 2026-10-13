@@ -8,6 +8,8 @@ export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
   sessionToken?: string | null;
   uiRoleHint?: UserRole;
   headers?: Record<string, string>;
+  silent?: boolean;
+  skipRefresh?: boolean;
 }
 
 export interface ApiClientCallbacks {
@@ -35,6 +37,7 @@ export class VersionDbApiClient {
   private callbacks: ApiClientCallbacks = {};
   private configOverride?: ApiClientConfigOverride;
   private defaultSessionToken: string | null = null;
+  private refreshPromise: Promise<string | null> | null = null;
 
   constructor(configOverride?: ApiClientConfigOverride) {
     this.configOverride = configOverride;
@@ -90,6 +93,52 @@ export class VersionDbApiClient {
     }
 
     return `${baseUrl}${cleanPath}`;
+  }
+
+  public async executeTokenRefresh(refreshToken: string): Promise<string | null> {
+    if (this.refreshPromise) {
+      return this.refreshPromise;
+    }
+
+    this.refreshPromise = (async () => {
+      try {
+        const refreshUrl = this.resolveUrl('/auth/refresh');
+        const fetchFn = this.configOverride?.fetchImpl ?? globalThis.fetch.bind(globalThis);
+        const response = await fetchFn(refreshUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+
+        if (response.ok) {
+          const data = (await response.json()) as { accessToken?: string; refreshToken?: string };
+          if (data?.accessToken) {
+            if (typeof window !== 'undefined' && window.localStorage) {
+              localStorage.setItem('versiondb_token', data.accessToken);
+              if (data.refreshToken) {
+                localStorage.setItem('versiondb_refresh_token', data.refreshToken);
+              }
+            }
+            this.setSessionToken(data.accessToken);
+            return data.accessToken;
+          }
+        }
+
+        // Refresh failed (invalid or expired refresh token)
+        if (typeof window !== 'undefined' && window.localStorage) {
+          localStorage.removeItem('versiondb_token');
+          localStorage.removeItem('versiondb_refresh_token');
+        }
+        this.setSessionToken(null);
+        return null;
+      } catch {
+        return null;
+      } finally {
+        this.refreshPromise = null;
+      }
+    })();
+
+    return this.refreshPromise;
   }
 
   public async request<T>(
@@ -157,21 +206,69 @@ export class VersionDbApiClient {
       });
 
       if (response.status === 401) {
-        const msg =
+        let notAuthDetail =
           'Session unauthorized or expired (HTTP 401). Please authenticate with a valid backend session.';
-        this.callbacks.onUnauthorized?.(msg);
+        try {
+          const errJson = await response.json();
+          if (errJson?.error && typeof errJson.error === 'object' && errJson.error.message) {
+            notAuthDetail = errJson.error.message;
+          } else if (typeof errJson?.error === 'string') {
+            notAuthDetail = errJson.error;
+          } else if (typeof errJson?.message === 'string') {
+            notAuthDetail = errJson.message;
+          }
+        } catch {
+          // Ignore parse failure
+        }
+        const isAuthAttempt =
+          resourceDescriptor.includes('/auth/login') ||
+          resourceDescriptor.includes('/auth/register') ||
+          resourceDescriptor.includes('/auth/refresh');
+
+        // Transparent token refresh on 401 if refresh token is available and not retried yet
+        if (!isAuthAttempt && !options.skipRefresh && typeof window !== 'undefined' && window.localStorage) {
+          const storedRefreshToken = localStorage.getItem('versiondb_refresh_token');
+          if (storedRefreshToken) {
+            const freshAccessToken = await this.executeTokenRefresh(storedRefreshToken);
+            if (freshAccessToken) {
+              return this.request<T>(resourceDescriptor, {
+                ...options,
+                sessionToken: freshAccessToken,
+                skipRefresh: true,
+              });
+            }
+          }
+        }
+
+        if (!isAuthAttempt && !options.silent) {
+          this.callbacks.onUnauthorized?.(notAuthDetail);
+        }
         return {
           ok: false,
           statusCode: 401,
           errorCode: 'UNAUTHORIZED',
-          error: msg,
+          error: notAuthDetail,
         };
       }
 
       if (response.status === 403) {
-        const msg =
+        let msg =
           'Access denied by backend authorization policy (HTTP 403). Your account does not have permission for this operation.';
-        this.callbacks.onForbidden?.(msg);
+        try {
+          const errJson = await response.json();
+          if (errJson?.error && typeof errJson.error === 'object' && errJson.error.message) {
+            msg = errJson.error.message;
+          } else if (typeof errJson?.error === 'string') {
+            msg = errJson.error;
+          } else if (typeof errJson?.message === 'string') {
+            msg = errJson.message;
+          }
+        } catch {
+          // Ignore parse failure
+        }
+        if (!options.silent) {
+          this.callbacks.onForbidden?.(msg);
+        }
         return {
           ok: false,
           statusCode: 403,
