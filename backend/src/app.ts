@@ -18,13 +18,20 @@ export function createApp(c: Container): Express {
     origin: c.env.CORS_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean),
     credentials: false,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-    allowedHeaders: ['Authorization', 'Content-Type', 'Idempotency-Key', 'X-Request-Id'],
+    allowedHeaders: [
+      'Authorization',
+      'Content-Type',
+      'Idempotency-Key',
+      'X-Request-Id',
+      'X-Active-Branch',
+      'x-active-branch',
+    ],
     exposedHeaders: ['X-Request-Id', 'Idempotent-Replay'],
   }));
   app.use(express.json({ limit: '2mb' }));
 
-  app.get('/health', (_req, res) => { res.json({ status: 'ok' }); });
-  app.get('/ready', async (_req, res) => {
+  const healthHandler = (_req: express.Request, res: express.Response) => { res.json({ status: 'ok' }); };
+  const readyHandler = async (_req: express.Request, res: express.Response) => {
     try {
       await Promise.all([c.uow.ping(), c.storage.ping()]);
       res.json({ status: 'ready' });
@@ -32,7 +39,11 @@ export function createApp(c: Container): Express {
       c.logger.error('readiness check failed', { errMessage: (e as Error).message });
       res.status(503).json({ status: 'unavailable' });
     }
-  });
+  };
+  app.get('/health', healthHandler);
+  app.get('/api/health', healthHandler);
+  app.get('/ready', readyHandler);
+  app.get('/api/ready', readyHandler);
   app.get('/metrics', (req, res) => {
     const token = c.env.METRICS_TOKEN;
     if (token ? req.header('authorization') !== `Bearer ${token}` : c.env.NODE_ENV === 'production') {

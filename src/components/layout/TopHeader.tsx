@@ -16,6 +16,7 @@ export const TopHeader: React.FC = () => {
     authState,
     signOutSession,
     backendConnectionState,
+    connectionDiagnostics,
     isBackendConfigured,
     mergeRequests,
     conflicts,
@@ -56,44 +57,40 @@ export const TopHeader: React.FC = () => {
   const openMrsCount = mergeRequests.filter((mr) => mr.status !== 'MERGED').length;
   const stagedTotal = stagedRowMutations.length + stagedDdlChanges.length;
 
+  // Connection badge driven by real health-check diagnostics instead of hardcoded latency
   const connectionBadge = (() => {
-    if (!isBackendConfigured || backendConnectionState === 'unconfigured') {
+    const diag = connectionDiagnostics;
+
+    if (diag.status === 'unconfigured' || (!isBackendConfigured && backendConnectionState === 'unconfigured')) {
       return {
         label: 'Backend Not Configured',
         dotClass: 'bg-[#f59e0b]',
         pillClass: 'bg-[#fffbeb] text-[#b45309] border-[#f59e0b]/30',
       };
     }
-    if (backendConnectionState === 'checking') {
+    if (diag.status === 'checking') {
       return {
-        label: 'Checking Service...',
+        label: 'Checking Service…',
         dotClass: 'bg-primary animate-pulse',
         pillClass: 'bg-primary-fixed/40 text-primary border-primary/25',
       };
     }
-    if (backendConnectionState !== 'connected' || !activeRepo) {
+    if (diag.status === 'connected' && diag.latencyMs !== null) {
       return {
-        label: 'Service Unavailable',
-        dotClass: 'bg-error',
-        pillClass: 'bg-error-container/50 text-on-error-container border-error/20',
-      };
-    }
-    if (activeRepo.connectionMode === 'connected') {
-      return {
-        label: `Connected (${activeRepo.latencyMs}ms)`,
+        label: `Connected (${diag.latencyMs}ms)`,
         dotClass: 'bg-[#16a34a]',
         pillClass: 'bg-[#f0fdf4] text-[#15803d] border-[#16a34a]/20',
       };
     }
-    if (activeRepo.connectionMode === 'read-only') {
+    if (diag.status === 'degraded' && diag.latencyMs !== null) {
       return {
-        label: 'Read-Only Replica',
+        label: `Slow (${diag.latencyMs}ms)`,
         dotClass: 'bg-[#d97706]',
         pillClass: 'bg-[#fffbeb] text-[#b45309] border-[#d97706]/25',
       };
     }
     return {
-      label: 'Disconnected',
+      label: 'Service Unavailable',
       dotClass: 'bg-error',
       pillClass: 'bg-error-container/50 text-on-error-container border-error/20',
     };

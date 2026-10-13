@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   BackendStatusBanner,
   EmptyStateCard,
@@ -21,7 +21,28 @@ export const BranchesScreen: React.FC = () => {
     isCatalogLoading,
     refreshWorkspaceCatalog,
     setApiContractDrawerOpen,
+    roleCapabilities,
+    activeRepo,
+    deleteBranch,
+    isOperationPending,
   } = useVersionDb();
+
+  const [branchToDelete, setBranchToDelete] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const handleDeleteConfirm = async () => {
+    if (!branchToDelete || isDeleting) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    const res = await deleteBranch(branchToDelete);
+    setIsDeleting(false);
+    if (res.ok) {
+      setBranchToDelete(null);
+    } else {
+      setDeleteError(res.error || 'Failed to delete branch.');
+    }
+  };
 
   return (
     <div className="flex flex-col w-full pb-12 pt-2 space-y-6">
@@ -80,6 +101,9 @@ export const BranchesScreen: React.FC = () => {
             <tbody className="divide-y divide-surface-container font-body-sm text-body-sm">
               {branches.map((b) => {
                 const isCurrent = b.name === activeBranch;
+                const isDefault = b.name === (activeRepo?.defaultBranch || 'main');
+                const canDeleteThisBranch = roleCapabilities.canDeleteBranch && !isDefault;
+
                 return (
                   <tr
                     key={b.name}
@@ -93,6 +117,11 @@ export const BranchesScreen: React.FC = () => {
                         {b.isProtected && (
                           <span className="px-1.5 py-0.5 rounded bg-primary-fixed text-primary font-label-mono text-[10px] uppercase">
                             Protected
+                          </span>
+                        )}
+                        {isDefault && (
+                          <span className="px-1.5 py-0.5 rounded bg-surface-container-high text-secondary font-label-mono text-[10px] uppercase">
+                            Default
                           </span>
                         )}
                       </div>
@@ -140,6 +169,26 @@ export const BranchesScreen: React.FC = () => {
                             Open MR
                           </button>
                         )}
+                        {canDeleteThisBranch && (
+                          <button
+                            type="button"
+                            disabled={isCurrent || b.isProtected || isDeleting || isOperationPending}
+                            onClick={() => {
+                              setDeleteError(null);
+                              setBranchToDelete(b.name);
+                            }}
+                            title={
+                              isCurrent
+                                ? 'Cannot delete active branch. Checkout another branch first.'
+                                : b.isProtected
+                                ? 'Protected branch cannot be deleted.'
+                                : `Delete branch ${b.name}`
+                            }
+                            className="px-2.5 py-1 rounded bg-error/10 hover:bg-error/20 text-xs font-semibold text-error disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                          >
+                            Delete
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -147,6 +196,114 @@ export const BranchesScreen: React.FC = () => {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Delete Branch Confirmation Modal */}
+      {branchToDelete && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isDeleting) {
+              setBranchToDelete(null);
+              setDeleteError(null);
+            }
+          }}
+        >
+          <div className="bg-white rounded-xl shadow-2xl border border-outline-variant/30 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="px-6 py-4.5 border-b border-surface-container flex items-center justify-between bg-surface-container-lowest">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-error/10 flex items-center justify-center text-error">
+                  <span className="material-symbols-outlined text-xl">delete_forever</span>
+                </div>
+                <div>
+                  <h3 className="font-headline text-base font-semibold text-on-surface">
+                    Delete Branch
+                  </h3>
+                  <p className="font-body-sm text-xs text-secondary mt-0.5">
+                    {activeRepo ? `Repository: ${activeRepo.name}` : 'Permanent branch deletion'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => {
+                  setBranchToDelete(null);
+                  setDeleteError(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 rounded-lg p-1 transition-colors disabled:opacity-40"
+                aria-label="Close modal"
+              >
+                <span className="material-symbols-outlined text-xl">close</span>
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-4">
+              {deleteError && (
+                <div className="p-3.5 rounded-lg bg-error-container/30 border border-error/30 flex items-start gap-2.5 text-xs text-error">
+                  <span className="material-symbols-outlined text-sm mt-0.5 shrink-0">error</span>
+                  <span>{deleteError}</span>
+                </div>
+              )}
+
+              <p className="font-body-sm text-sm text-on-surface">
+                Are you sure you want to permanently delete branch{' '}
+                <span className="font-code-sm font-bold text-error px-1.5 py-0.5 rounded bg-error/10">
+                  {branchToDelete}
+                </span>
+                ?
+              </p>
+
+              <div className="p-3 bg-surface-container-low rounded-lg text-xs text-secondary space-y-1">
+                <div className="font-medium text-on-surface flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-sm text-primary">info</span>
+                  <span>Preservation Notice:</span>
+                </div>
+                <p>
+                  Commits, audit logs, and shared version history will be preserved. Only the branch
+                  reference and uncommitted working changes will be removed.
+                </p>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 bg-surface-container-low border-t border-surface-container flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => {
+                  setBranchToDelete(null);
+                  setDeleteError(null);
+                }}
+                className="px-4 py-2 rounded-lg text-xs font-medium text-secondary hover:text-on-surface hover:bg-surface-container transition-colors disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleDeleteConfirm}
+                className="px-4 py-2 rounded-lg bg-error text-white text-xs font-semibold shadow-sm hover:bg-error/90 flex items-center gap-1.5 disabled:opacity-50 transition-colors"
+              >
+                {isDeleting ? (
+                  <>
+                    <span className="material-symbols-outlined text-sm animate-spin">
+                      progress_activity
+                    </span>
+                    <span>Deleting Branch...</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-sm">delete</span>
+                    <span>Delete Branch</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -82,6 +82,26 @@ describe('VersionDB Production Service Architecture & Error Handling', () => {
     assert.equal(forbiddenTriggered, true);
   });
 
+  it('suppresses onForbidden callback when silent: true on HTTP 403', async () => {
+    let forbiddenTriggered = false;
+    const client = new VersionDbApiClient({
+      apiBaseUrl: 'https://api.example.invalid',
+      fetchImpl: async () =>
+        new Response(JSON.stringify({ error: 'Permission denied' }), { status: 403 }),
+    });
+    client.setCallbacks({
+      onForbidden: () => {
+        forbiddenTriggered = true;
+      },
+    });
+
+    const res = await client.request('/repos/r1/branches/b1', { silent: true });
+    assert.equal(res.ok, false);
+    assert.equal(res.statusCode, 403);
+    assert.equal(res.errorCode, 'FORBIDDEN');
+    assert.equal(forbiddenTriggered, false, 'onForbidden should not fire when silent: true');
+  });
+
   it('supports request cancellation via AbortController', async () => {
     const controller = new AbortController();
     controller.abort();
@@ -351,18 +371,100 @@ describe('VersionDB Production Service Architecture & Error Handling', () => {
     assert.equal(methodsCalled[1], 'POST');
   });
 
+  it('integrates branch creation endpoint with POST /api/repos/:repoId/branches', async () => {
+    let capturedUrl = '';
+    let capturedMethod = '';
+    let capturedBody = '';
+    let capturedAuth = '';
+
+    const client = new VersionDbApiClient({
+      apiBaseUrl: 'http://localhost:3000',
+      fetchImpl: async (url, init) => {
+        capturedUrl = String(url);
+        capturedMethod = init?.method || '';
+        capturedBody = String(init?.body || '');
+        capturedAuth = (init?.headers as Record<string, string>)?.['Authorization'] || '';
+        return new Response(
+          JSON.stringify({
+            branch: {
+              id: 'branch-uuid-1',
+              repoId: 'repo-uuid-1',
+              name: 'feature-payments',
+              headCommitId: 'commit-uuid-99',
+              createdBy: 'user-1',
+              createdAt: '2026-10-12T00:00:00.000Z',
+              protection: null,
+            },
+          }),
+          { status: 201 }
+        );
+      },
+    });
+
+    const services = createVersionDbServices(client);
+    const res = await services.branches.createBranch(
+      'repo-uuid-1',
+      'feature-payments',
+      'main',
+      'token-xyz'
+    );
+
+    assert.equal(res.ok, true);
+    assert.equal(res.statusCode, 201);
+    assert.equal(capturedUrl, 'http://localhost:3000/api/repos/repo-uuid-1/branches');
+    assert.equal(capturedMethod, 'POST');
+    assert.equal(capturedAuth, 'Bearer token-xyz');
+    assert.deepEqual(JSON.parse(capturedBody), {
+      name: 'feature-payments',
+      sourceBranch: 'main',
+    });
+    assert.equal(res.data?.name, 'feature-payments');
+    assert.equal(res.data?.headCommitHash, 'commituu');
+    assert.equal(res.data?.isProtected, false);
+  });
+
+  it('branches.createBranch validates required fields and handles 409 conflict', async () => {
+    const client = new VersionDbApiClient({
+      apiBaseUrl: 'http://localhost:3000',
+      fetchImpl: async () => {
+        return new Response(
+          JSON.stringify({
+            error: {
+              code: 'BRANCH_EXISTS',
+              message: "A branch with name 'main' already exists in this repository",
+            },
+          }),
+          { status: 409 }
+        );
+      },
+    });
+
+    const services = createVersionDbServices(client);
+
+    // Empty branch name validation
+    const emptyRes = await services.branches.createBranch('repo-1', '   ', 'main');
+    assert.equal(emptyRes.ok, false);
+    assert.equal(emptyRes.errorCode, 'VALIDATION_ERROR');
+
+    // Empty repo ID validation
+    const noRepoRes = await services.branches.createBranch('', 'feat', 'main');
+    assert.equal(noRepoRes.ok, false);
+    assert.equal(noRepoRes.errorCode, 'VALIDATION_ERROR');
+
+    // 409 duplicate name conflict
+    const conflictRes = await services.branches.createBranch('repo-1', 'main', 'main');
+    assert.equal(conflictRes.ok, false);
+    assert.equal(conflictRes.statusCode, 409);
+    assert.ok(conflictRes.error?.includes('already exists'));
+  });
+
   it('truthfully reports missing endpoints for unimplemented features', async () => {
     const client = new VersionDbApiClient({ apiBaseUrl: 'http://localhost:3000' });
     const services = createVersionDbServices(client);
 
-    const branchRes = await services.branches.createBranch(
-      'repo-1',
-      'feature-x',
-      'main',
-      'token-123'
-    );
-    assert.equal(branchRes.ok, false);
-    assert.ok(branchRes.error?.includes('not implemented'));
+    const auditExportRes = await services.governance.exportAuditLogs('json', 'token-123');
+    assert.equal(auditExportRes.ok, false);
+    assert.ok(auditExportRes.error?.includes('not implemented'));
 
     const mrRes = await services.mergeRequests.createMergeRequest(
       {
@@ -542,5 +644,393 @@ describe('VersionDB Registration + Auto-Login Flow', () => {
     assert.equal(res.ok, false);
     assert.equal(res.statusCode, 409);
     assert.ok(res.error?.toLowerCase().includes('conflict') || res.error?.toLowerCase().includes('exists'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Integration Bug Fix Regressions
+// ---------------------------------------------------------------------------
+describe('VersionDB Integration Bug Fix Regressions', () => {
+  it('extracts backend message on 401 login failure and suppresses onUnauthorized session callback', async () => {
+    let unauthorizedCallbackTriggered = false;
+    const client = new VersionDbApiClient({
+      apiBaseUrl: 'http://localhost:3000',
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({
+            error: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' },
+          }),
+          { status: 401, headers: { 'Content-Type': 'application/json' } }
+        ),
+    });
+
+    client.setCallbacks({
+      onUnauthorized: () => {
+        unauthorizedCallbackTriggered = true;
+      },
+    });
+
+    const services = createVersionDbServices(client);
+    const res = await services.auth.signIn('user@example.com', 'wrongpassword');
+
+    assert.equal(res.ok, false);
+    assert.equal(res.statusCode, 401);
+    assert.equal(res.errorCode, 'UNAUTHORIZED');
+    assert.equal(res.error, 'Invalid credentials');
+    assert.equal(
+      unauthorizedCallbackTriggered,
+      false,
+      'Login credential failure should not trigger session expiration callback'
+    );
+  });
+
+  it('invokes onUnauthorized with server error message on protected routes', async () => {
+    let unauthorizedMsg = '';
+    const client = new VersionDbApiClient({
+      apiBaseUrl: 'http://localhost:3000',
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({
+            error: { code: 'INVALID_TOKEN', message: 'Session token has expired' },
+          }),
+          { status: 401, headers: { 'Content-Type': 'application/json' } }
+        ),
+    });
+
+    client.setCallbacks({
+      onUnauthorized: (msg) => {
+        unauthorizedMsg = msg;
+      },
+    });
+
+    const services = createVersionDbServices(client);
+    const res = await services.repositories.listRepositories('expired-token');
+
+    assert.equal(res.ok, false);
+    assert.equal(res.statusCode, 401);
+    assert.equal(res.error, 'Session token has expired');
+    assert.equal(unauthorizedMsg, 'Session token has expired');
+  });
+
+  it('fetchWorkspaceState targets specified repository when targetRepoId is provided', async () => {
+    const urlsRequested: string[] = [];
+    const client = new VersionDbApiClient({
+      apiBaseUrl: 'http://localhost:3000',
+      fetchImpl: async (url) => {
+        const urlStr = String(url);
+        urlsRequested.push(urlStr);
+        if (urlStr.endsWith('/api/repos')) {
+          return new Response(
+            JSON.stringify({
+              repositories: [
+                { id: 'repo-1', name: 'repo-one', defaultBranch: 'main' },
+                { id: 'repo-2', name: 'repo-two', defaultBranch: 'main' },
+              ],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        if (urlStr.includes('/branches')) {
+          return new Response(JSON.stringify({ branches: [] }), { status: 200 });
+        }
+        if (urlStr.includes('/members')) {
+          return new Response(JSON.stringify({ members: [] }), { status: 200 });
+        }
+        if (urlStr.includes('/records')) {
+          return new Response(JSON.stringify({ commitId: null, collections: [] }), { status: 200 });
+        }
+        if (urlStr.includes('/history')) {
+          return new Response(JSON.stringify({ commits: [] }), { status: 200 });
+        }
+        return new Response('{}', { status: 200 });
+      },
+    });
+
+    const services = createVersionDbServices(client);
+    const res = await services.catalog.fetchWorkspaceState('token-123', 'repo-2');
+
+    assert.equal(res.ok, true);
+    assert.equal(res.data?.repositories.length, 2);
+    // Verified that repo-2 endpoints were invoked
+    assert.ok(urlsRequested.some((u) => u.includes('/api/repos/repo-2/branches')));
+    assert.ok(urlsRequested.some((u) => u.includes('/api/repos/repo-2/members')));
+  });
+
+  it('members.updateMemberRole sends PATCH /api/repos/:repoId/members/:userId with repo role', async () => {
+    let capturedUrl = '';
+    let capturedMethod = '';
+    let capturedBody = '';
+
+    const client = new VersionDbApiClient({
+      apiBaseUrl: 'http://localhost:3000',
+      fetchImpl: async (url, init) => {
+        capturedUrl = String(url);
+        capturedMethod = init?.method || '';
+        capturedBody = String(init?.body || '');
+        return new Response(null, { status: 204 });
+      },
+    });
+
+    const services = createVersionDbServices(client);
+    const res = await services.members.updateMemberRole('repo-1', 'user-1', 'Reviewer', 'tok-1');
+
+    assert.equal(res.ok, true);
+    assert.equal(res.statusCode, 204);
+    assert.equal(capturedUrl, 'http://localhost:3000/api/repos/repo-1/members/user-1');
+    assert.equal(capturedMethod, 'PATCH');
+    assert.deepEqual(JSON.parse(capturedBody), { role: 'reviewer' });
+  });
+
+  it('records.discardWorkingChanges sends DELETE /api/repos/:repoId/branches/:branch/working', async () => {
+    let capturedUrl = '';
+    let capturedMethod = '';
+
+    const client = new VersionDbApiClient({
+      apiBaseUrl: 'http://localhost:3000',
+      fetchImpl: async (url, init) => {
+        capturedUrl = String(url);
+        capturedMethod = init?.method || '';
+        return new Response(JSON.stringify({ discarded: 3 }), { status: 200 });
+      },
+    });
+
+    const services = createVersionDbServices(client);
+    const res = await services.records.discardWorkingChanges('repo-1', 'main', 'tok-1');
+
+    assert.equal(res.ok, true);
+    assert.equal(capturedUrl, 'http://localhost:3000/api/repos/repo-1/branches/main/working');
+    assert.equal(capturedMethod, 'DELETE');
+    assert.equal(res.data?.discarded, 3);
+  });
+
+  it('diagnostics.checkHealth queries /api/health with silent mode and returns latency', async () => {
+    let capturedUrl = '';
+    const client = new VersionDbApiClient({
+      apiBaseUrl: 'http://localhost:3000',
+      fetchImpl: async (url) => {
+        capturedUrl = String(url);
+        return new Response(JSON.stringify({ status: 'ok' }), { status: 200 });
+      },
+    });
+
+    const services = createVersionDbServices(client);
+    const res = await services.diagnostics.checkHealth();
+
+    assert.equal(res.ok, true);
+    assert.equal(capturedUrl, 'http://localhost:3000/api/health');
+    assert.equal(res.data?.status, 'ok');
+    assert.equal(typeof res.data?.latencyMs, 'number');
+    assert.ok((res.data?.latencyMs ?? -1) >= 0);
+  });
+
+  it('diagnostics.checkReady queries /api/ready and returns readiness status', async () => {
+    let capturedUrl = '';
+    const client = new VersionDbApiClient({
+      apiBaseUrl: 'http://localhost:3000',
+      fetchImpl: async (url) => {
+        capturedUrl = String(url);
+        return new Response(JSON.stringify({ status: 'ready', database: 'healthy' }), {
+          status: 200,
+        });
+      },
+    });
+
+    const services = createVersionDbServices(client);
+    const res = await services.diagnostics.checkReady();
+
+    assert.equal(res.ok, true);
+    assert.equal(capturedUrl, 'http://localhost:3000/api/ready');
+    assert.equal(res.data?.status, 'ready');
+    assert.equal(typeof res.data?.latencyMs, 'number');
+  });
+
+  it('auth.verifySession with silent: true suppresses onUnauthorized callback', async () => {
+    let unauthorizedFired = false;
+    const client = new VersionDbApiClient({
+      apiBaseUrl: 'http://localhost:3000',
+      fetchImpl: async () => {
+        return new Response(JSON.stringify({ error: { message: 'Invalid token' } }), {
+          status: 401,
+        });
+      },
+    });
+
+    client.setCallbacks({
+      onUnauthorized: () => {
+        unauthorizedFired = true;
+      },
+    });
+
+    const services = createVersionDbServices(client);
+    const res = await services.auth.verifySession('bad-tok', { silent: true });
+
+    assert.equal(res.ok, false);
+    assert.equal(res.statusCode, 401);
+    assert.equal(unauthorizedFired, false, 'onUnauthorized should not fire when silent: true');
+  });
+
+  it('repositories.createRepository validates empty name before making network request', async () => {
+    let fetchCalled = false;
+    const client = new VersionDbApiClient({
+      apiBaseUrl: 'http://localhost:3000',
+      fetchImpl: async () => {
+        fetchCalled = true;
+        return new Response(null, { status: 200 });
+      },
+    });
+
+    const services = createVersionDbServices(client);
+    const res = await services.repositories.createRepository({
+      name: '   ',
+      engine: 'PostgreSQL',
+      environment: 'Production',
+      region: 'us-east-1',
+      defaultBranch: 'main',
+    });
+
+    assert.equal(res.ok, false);
+    assert.equal(res.errorCode, 'VALIDATION_ERROR');
+    assert.equal(fetchCalled, false, 'Fetch should not be called when name is invalid');
+  });
+
+  it('branches.deleteBranch validates empty inputs before making network request', async () => {
+    let fetchCalled = false;
+    const client = new VersionDbApiClient({
+      apiBaseUrl: 'http://localhost:3000',
+      fetchImpl: async () => {
+        fetchCalled = true;
+        return new Response(null, { status: 200 });
+      },
+    });
+
+    const services = createVersionDbServices(client);
+
+    const emptyNameRes = await services.branches.deleteBranch('repo-1', '   ');
+    assert.equal(emptyNameRes.ok, false);
+    assert.equal(emptyNameRes.errorCode, 'VALIDATION_ERROR');
+
+    const emptyRepoRes = await services.branches.deleteBranch('', 'staging');
+    assert.equal(emptyRepoRes.ok, false);
+    assert.equal(emptyRepoRes.errorCode, 'VALIDATION_ERROR');
+
+    assert.equal(fetchCalled, false, 'Fetch should not be called when inputs are invalid');
+  });
+
+  it('branches.deleteBranch rejects active branch locally before making network request', async () => {
+    let fetchCalled = false;
+    const client = new VersionDbApiClient({
+      apiBaseUrl: 'http://localhost:3000',
+      fetchImpl: async () => {
+        fetchCalled = true;
+        return new Response(null, { status: 200 });
+      },
+    });
+
+    const services = createVersionDbServices(client);
+    const res = await services.branches.deleteBranch('repo-1', 'staging', 'tok', {
+      activeBranch: 'staging',
+    });
+
+    assert.equal(res.ok, false);
+    assert.equal(res.errorCode, 'VALIDATION_ERROR');
+    assert.ok(res.error?.includes('Cannot delete active branch'));
+    assert.equal(fetchCalled, false, 'Fetch should not be called when activeBranch matches');
+  });
+
+  it('branches.deleteBranch calls DELETE /api/repos/:repoId/branches/:branchName and parses success', async () => {
+    let capturedUrl = '';
+    let capturedMethod = '';
+    let capturedAuth = '';
+    let capturedActiveHeader = '';
+
+    const client = new VersionDbApiClient({
+      apiBaseUrl: 'http://localhost:3000',
+      fetchImpl: async (url, init) => {
+        capturedUrl = String(url);
+        capturedMethod = init?.method || '';
+        capturedAuth = (init?.headers as Record<string, string>)?.['Authorization'] || '';
+        capturedActiveHeader = (init?.headers as Record<string, string>)?.['x-active-branch'] || '';
+        return new Response(
+          JSON.stringify({ deleted: true, branchName: 'staging' }),
+          { status: 200 }
+        );
+      },
+    });
+
+    const services = createVersionDbServices(client);
+    const res = await services.branches.deleteBranch('repo-uuid-1', 'staging', 'token-abc', {
+      activeBranch: 'main',
+    });
+
+    assert.equal(res.ok, true);
+    assert.equal(res.statusCode, 200);
+    assert.equal(capturedUrl, 'http://localhost:3000/api/repos/repo-uuid-1/branches/staging?activeBranch=main');
+    assert.equal(capturedMethod, 'DELETE');
+    assert.equal(capturedAuth, 'Bearer token-abc');
+    assert.equal(res.data?.success, true);
+    assert.equal(res.data?.branchName, 'staging');
+  });
+
+  it('branches.deleteBranch handles 409 conflict responses properly', async () => {
+    const client = new VersionDbApiClient({
+      apiBaseUrl: 'http://localhost:3000',
+      fetchImpl: async () => {
+        return new Response(
+          JSON.stringify({
+            error: {
+              code: 'PROTECTED_BRANCH',
+              message: "Branch 'release' is protected and cannot be deleted",
+            },
+          }),
+          { status: 409 }
+        );
+      },
+    });
+
+    const services = createVersionDbServices(client);
+    const res = await services.branches.deleteBranch('repo-uuid-1', 'release', 'tok');
+
+    assert.equal(res.ok, false);
+    assert.equal(res.statusCode, 409);
+    assert.ok(res.error?.includes('protected and cannot be deleted'));
+  });
+
+  it('branches.deleteBranch handles 403 forbidden and 404 not found responses properly', async () => {
+    const client = new VersionDbApiClient({
+      apiBaseUrl: 'http://localhost:3000',
+      fetchImpl: async (_url, init) => {
+        const auth = (init?.headers as Record<string, string>)?.['Authorization'];
+        if (auth === 'Bearer viewer-tok') {
+          return new Response(
+            JSON.stringify({
+              error: {
+                code: 'FORBIDDEN',
+                message: 'This action requires the maintainer role or higher',
+              },
+            }),
+            { status: 403 }
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            error: {
+              code: 'NOT_FOUND',
+              message: "Branch 'nonexistent' not found",
+            },
+          }),
+          { status: 404 }
+        );
+      },
+    });
+
+    const services = createVersionDbServices(client);
+
+    const forbiddenRes = await services.branches.deleteBranch('repo-uuid-1', 'staging', 'viewer-tok');
+    assert.equal(forbiddenRes.ok, false);
+    assert.equal(forbiddenRes.statusCode, 403);
+
+    const notFoundRes = await services.branches.deleteBranch('repo-uuid-1', 'nonexistent', 'admin-tok');
+    assert.equal(notFoundRes.ok, false);
+    assert.equal(notFoundRes.statusCode, 404);
   });
 });

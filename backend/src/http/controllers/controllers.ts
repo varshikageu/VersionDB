@@ -47,6 +47,20 @@ export function createControllers(c: Container) {
       branches: asyncHandler(async (req: Request, res: Response) => {
         res.json({ branches: await repositories.listBranches(actorOf(req), parse(s.repoParams, req.params).repoId) });
       }),
+      createBranch: asyncHandler(async (req: Request, res: Response) => {
+        const { repoId } = parse(s.repoParams, req.params);
+        const body = parse(s.createBranchBody, req.body);
+        const branch = await repositories.createBranch(actorOf(req), repoId, body);
+        res.status(201).json({ branch });
+      }),
+      deleteBranch: asyncHandler(async (req: Request, res: Response) => {
+        const { repoId, branchName } = parse(s.deleteBranchParams, req.params);
+        const activeBranch =
+          (req.query.activeBranch as string) ||
+          (req.headers['x-active-branch'] as string) ||
+          undefined;
+        res.json(await repositories.deleteBranch(actorOf(req), repoId, branchName, { activeBranch }));
+      }),
     },
 
     members: {

@@ -1,7 +1,7 @@
 import { forbidden } from '../shared/errors';
 import type { GlobalRole, RepoRole } from './types';
 
-export type Capability = 'repo:read' | 'record:write' | 'commit:create' | 'member:manage';
+export type Capability = 'repo:read' | 'record:write' | 'commit:create' | 'branch:create' | 'branch:delete' | 'member:manage';
 
 const RANK: Record<RepoRole, number> = { viewer: 1, reviewer: 2, maintainer: 3, owner: 4 };
 
@@ -10,6 +10,8 @@ const REQUIRED: Record<Capability, RepoRole> = {
   'repo:read': 'viewer',
   'record:write': 'maintainer',
   'commit:create': 'maintainer',
+  'branch:create': 'maintainer',
+  'branch:delete': 'maintainer',
   'member:manage': 'owner',
 };
 

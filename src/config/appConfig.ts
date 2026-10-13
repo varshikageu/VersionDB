@@ -42,6 +42,7 @@ export const ROLE_UI_CAPABILITIES: Record<
     canMergeProtectedMain: boolean;
     canExecuteRollback: boolean;
     canManageMembers: boolean;
+    canDeleteBranch: boolean;
   }
 > = {
   Viewer: {
@@ -56,6 +57,7 @@ export const ROLE_UI_CAPABILITIES: Record<
     canMergeProtectedMain: false,
     canExecuteRollback: false,
     canManageMembers: false,
+    canDeleteBranch: false,
   },
   Developer: {
     canExecuteSelect: true,
@@ -69,6 +71,7 @@ export const ROLE_UI_CAPABILITIES: Record<
     canMergeProtectedMain: false,
     canExecuteRollback: false,
     canManageMembers: false,
+    canDeleteBranch: true,
   },
   Reviewer: {
     canExecuteSelect: true,
@@ -82,6 +85,7 @@ export const ROLE_UI_CAPABILITIES: Record<
     canMergeProtectedMain: true,
     canExecuteRollback: false,
     canManageMembers: false,
+    canDeleteBranch: false,
   },
   Admin: {
     canExecuteSelect: true,
@@ -95,6 +99,7 @@ export const ROLE_UI_CAPABILITIES: Record<
     canMergeProtectedMain: true,
     canExecuteRollback: true,
     canManageMembers: true,
+    canDeleteBranch: true,
   },
 };
 
@@ -161,13 +166,13 @@ export const BACKEND_INTEGRATION_CONTRACT: ApiEndpointContract[] = [
     contractStatus: 'CONFIGURED',
   },
   {
-    module: 'Branches (Listing)',
+    module: 'Branches (Listing & Management)',
     method: 'GET',
-    endpoint: '/api/repos/:repoId/branches',
+    endpoint: '/api/repos/:repoId/branches, POST /api/repos/:repoId/branches, DELETE /api/repos/:repoId/branches/:branchName',
     description:
-      'Lists branches for repository including headCommitId and protection status. Note: branch creation endpoint POST /branches is not implemented.',
-    requiredRole: 'Viewer',
-    responseSchema: 'BranchListResponse { branches: Branch[] }',
+      'Lists branches for repository, creates isolated branches from existing refs, and deletes non-default, unprotected branches.',
+    requiredRole: 'Developer',
+    responseSchema: 'BranchListResponse { branches: Branch[] } | BranchResponse { branch: Branch }',
     contractStatus: 'CONFIGURED',
   },
   {

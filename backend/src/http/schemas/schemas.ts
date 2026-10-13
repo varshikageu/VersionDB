@@ -23,7 +23,31 @@ export const memberRoleBody = z.object({ role: z.enum(['viewer', 'reviewer', 'ma
 export const memberParams = repoParams.extend({ userId: z.string().uuid() });
 
 const branch = z.string().regex(BRANCH_RE);
+export const createBranchBody = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(1, 'Branch name cannot be empty')
+      .max(64, 'Branch name cannot exceed 64 characters')
+      .regex(BRANCH_RE, 'Branch name must start with an alphanumeric character and contain only alphanumeric, ".", "_" or "-"')
+      .refine((n) => !n.includes('..'), 'Branch name cannot contain ".."')
+      .refine((n) => !n.endsWith('.lock'), 'Branch name cannot end with ".lock"'),
+    sourceBranch: z.string().trim().regex(BRANCH_RE, 'Valid source branch name is required').optional(),
+    fromBranch: z.string().trim().regex(BRANCH_RE, 'Valid source branch name is required').optional(),
+  })
+  .transform((val) => ({
+    name: val.name,
+    sourceBranch: val.sourceBranch || val.fromBranch || 'main',
+  }));
 export const branchParams = repoParams.extend({ branch });
+export const deleteBranchParams = repoParams.extend({
+  branchName: z.string().regex(BRANCH_RE).optional(),
+  branch: z.string().regex(BRANCH_RE).optional(),
+}).transform((p) => ({
+  repoId: p.repoId,
+  branchName: p.branchName || p.branch || '',
+}));
 export const recordParams = branchParams.extend({
   collection: z.string().regex(COLLECTION_RE),
   recordId: z.string().regex(RECORD_ID_RE),
