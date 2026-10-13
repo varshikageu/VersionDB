@@ -42,6 +42,12 @@ export interface ToastNotification {
   message: string;
 }
 
+export interface ConnectionDiagnostics {
+  status: 'connected' | 'degraded' | 'checking' | 'disconnected' | 'unconfigured';
+  latencyMs: number | null;
+  lastCheckedAt: string | null;
+}
+
 interface VersionDbContextValue {
   // Navigation
   activeScreen: ScreenPath;
@@ -53,10 +59,12 @@ interface VersionDbContextValue {
   apiBaseUrl: string;
   isBackendConfigured: boolean;
   backendConnectionState: BackendConnectionState;
+  connectionDiagnostics: ConnectionDiagnostics;
   lastBackendError: string | null;
   isCatalogLoading: boolean;
   isOperationPending: boolean;
   refreshWorkspaceCatalog: () => Promise<ServiceOperationResult>;
+  checkBackendHealth: () => Promise<void>;
 
   // Auth & UI Role Presentation Helper
   authState: AuthState;
@@ -105,6 +113,7 @@ interface VersionDbContextValue {
   compareTargetBranch: string;
   setCompareTargetBranch: (branchName: string) => void;
   createBranch: (name: string, fromBranch: string) => Promise<ServiceOperationResult<BranchRecord>>;
+  deleteBranch: (branchName: string) => Promise<ServiceOperationResult<{ success: boolean; branchName: string }>>;
 
   // Schema & Table Data
   tables: TableSchema[];
@@ -380,6 +389,15 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [isApiContractDrawerOpen, setApiContractDrawerOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
   const toastTimersRef = useRef<Map<string, number>>(new Map());
+  // Toast deduplication: track the last toast title+message to suppress duplicates within 2s
+  const lastToastRef = useRef<{ key: string; ts: number } | null>(null);
+
+  // Connection diagnostics state — populated by periodic health checks
+  const [connectionDiagnostics, setConnectionDiagnostics] = useState<ConnectionDiagnostics>({
+    status: envConfig.isBackendConfigured ? 'checking' : 'unconfigured',
+    latencyMs: null,
+    lastCheckedAt: null,
+  });
 
   const dismissToast = useCallback((id: string) => {
     const timer = toastTimersRef.current.get(id);
@@ -392,7 +410,15 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const pushToast = useCallback(
     (type: ToastNotification['type'], title: string, message: string) => {
-      const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      // Deduplication: suppress identical title+message within 2s
+      const dedupeKey = `${type}:${title}:${message}`;
+      const now = Date.now();
+      if (lastToastRef.current && lastToastRef.current.key === dedupeKey && now - lastToastRef.current.ts < 2000) {
+        return; // duplicate suppressed
+      }
+      lastToastRef.current = { key: dedupeKey, ts: now };
+
+      const id = `toast-${now}-${Math.random().toString(36).slice(2, 6)}`;
       setToasts((prev) => [...prev.slice(-3), { id, type, title, message }]);
 
       // Auto-dismiss: success/info/warning after 3.5s, errors after 7s
@@ -515,7 +541,7 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const liveToken = apiClient.getSessionToken();
     setIsCatalogLoading(true);
     setBackendConnectionState('checking');
-    const result = await versionDbServices.catalog.fetchWorkspaceState(liveToken);
+    const result = await versionDbServices.catalog.fetchWorkspaceState(liveToken, activeRepoId);
     setIsCatalogLoading(false);
 
     if (result.ok && result.data) {
@@ -582,6 +608,8 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (!savedToken && !savedRefreshToken) {
       // No saved session: make sure loading is cleared and redirect to login
       // if the user landed on a protected route.
+      // Do NOT call refreshWorkspaceCatalog() here — there is no auth token,
+      // so GET /api/repos would return 401 and trigger a spurious toast.
       setAuthState((prev) => ({ ...prev, isInitialLoading: false }));
       setActiveScreen((current) => {
         if (!AUTH_SCREENS.includes(current)) {
@@ -590,9 +618,6 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
         return current;
       });
-      if (envConfig.isBackendConfigured) {
-        void refreshWorkspaceCatalog();
-      }
       return;
     }
 
@@ -600,7 +625,7 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     (async () => {
       if (savedToken) {
         apiClient.setSessionToken(savedToken);
-        const check = await versionDbServices.auth.verifySession(savedToken);
+        const check = await versionDbServices.auth.verifySession(savedToken, { silent: true });
         if (!isMounted) return;
         if (check.ok && check.data) {
           setAuthState({
@@ -653,7 +678,9 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
       }
 
-      // Tokens expired/invalid — clear and redirect to login
+      // Tokens expired/invalid — clear and redirect to login.
+      // Do NOT call refreshWorkspaceCatalog() here — the session tokens are
+      // cleared so any API call would trigger a 401 and a spurious toast.
       localStorage.removeItem('versiondb_token');
       localStorage.removeItem('versiondb_refresh_token');
       apiClient.setSessionToken(null);
@@ -673,9 +700,6 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
         return current;
       });
-      if (envConfig.isBackendConfigured) {
-        void refreshWorkspaceCatalog();
-      }
     })();
 
     return () => {
@@ -777,7 +801,9 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       const errMsg =
         res.error ||
-        'Authentication failed. Ensure the VersionDB authentication backend is configured and reachable.';
+        (res.statusCode === 401
+          ? 'Invalid email or password.'
+          : 'Authentication failed. Ensure the VersionDB authentication backend is configured and reachable.');
       setAuthState((prev) => ({
         ...prev,
         isAuthenticated: false,
@@ -786,7 +812,11 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         lastCheckedUtc: new Date().toISOString(),
         authError: errMsg,
       }));
-      pushToast('error', 'Authentication Unavailable', errMsg);
+      pushToast(
+        'error',
+        res.statusCode === 401 ? 'Invalid Credentials' : 'Authentication Failed',
+        errMsg
+      );
       return res;
     },
     [navigateTo, pushToast, refreshWorkspaceCatalog]
@@ -900,8 +930,69 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     [pushToast]
   );
 
+  // Health check: probes /api/health and updates connectionDiagnostics state
+  const checkBackendHealth = useCallback(async () => {
+    if (!envConfig.isBackendConfigured) {
+      setConnectionDiagnostics({ status: 'unconfigured', latencyMs: null, lastCheckedAt: null });
+      return;
+    }
+    setConnectionDiagnostics((prev) => ({ ...prev, status: 'checking' }));
+    const result = await versionDbServices.diagnostics.checkHealth();
+    if (result.ok && result.data) {
+      const latency = result.data.latencyMs;
+      setConnectionDiagnostics({
+        status: latency < 300 ? 'connected' : 'degraded',
+        latencyMs: latency,
+        lastCheckedAt: new Date().toISOString(),
+      });
+    } else {
+      setConnectionDiagnostics({
+        status: 'disconnected',
+        latencyMs: null,
+        lastCheckedAt: new Date().toISOString(),
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Poll backend health every 30 seconds when backend is configured
+  useEffect(() => {
+    if (!envConfig.isBackendConfigured) return;
+    // Initial check
+    void checkBackendHealth();
+    const intervalId = window.setInterval(() => {
+      void checkBackendHealth();
+    }, 30_000);
+    return () => window.clearInterval(intervalId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const selectRepository = useCallback((repoId: string) => {
     setActiveRepoId(repoId);
+    const liveToken = apiClient.getSessionToken();
+    if (liveToken) {
+      void versionDbServices.catalog.fetchWorkspaceState(liveToken, repoId).then((res) => {
+        if (res.ok && res.data) {
+          setBranches(res.data.branches || []);
+          setTables(res.data.tables || []);
+          setCommits(res.data.commits || []);
+          setUsers(res.data.members || []);
+          const branchName = res.data.branches[0]?.name || 'main';
+          setActiveBranch(branchName);
+          if (res.data.tables.length > 0) {
+            const firstTable = res.data.tables[0].name;
+            setSelectedTableName(firstTable);
+            void versionDbServices.records
+              .fetchRecords(repoId, branchName, firstTable, liveToken)
+              .then((rowsRes) => {
+                if (rowsRes.ok && rowsRes.data) {
+                  setTableRowsByTable((prev) => ({ ...prev, [firstTable]: rowsRes.data! }));
+                }
+              });
+          }
+        }
+      });
+    }
   }, []);
 
   const createRepository = useCallback(
@@ -922,8 +1013,10 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (res.ok && res.data) {
         setRepositories((prev) => [res.data!, ...prev]);
         setActiveRepoId(res.data.id);
+        setActiveBranch(res.data.defaultBranch || 'main');
         setCreateRepoModalOpen(false);
         pushToast('success', 'Repository Created', `Repository ${res.data.name} registered.`);
+        void refreshWorkspaceCatalog();
       } else {
         pushToast(
           'error',
@@ -933,7 +1026,7 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
       return res;
     },
-    [authState.sessionToken, pushToast]
+    [authState.sessionToken, pushToast, refreshWorkspaceCatalog]
   );
 
   const setRepositoryConnectionMode = useCallback(
@@ -964,36 +1057,165 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     [authState.sessionToken, pushToast]
   );
 
-  const selectBranch = useCallback((branchName: string) => {
-    setActiveBranch(branchName);
-  }, []);
+  const selectTableName = useCallback(
+    (tableName: string) => {
+      setSelectedTableName(tableName);
+      if (activeRepoId && activeBranch && tableName) {
+        const liveToken = apiClient.getSessionToken();
+        void versionDbServices.records
+          .fetchRecords(activeRepoId, activeBranch, tableName, liveToken)
+          .then((rowsRes) => {
+            if (rowsRes.ok && rowsRes.data) {
+              setTableRowsByTable((prev) => ({ ...prev, [tableName]: rowsRes.data! }));
+            }
+          });
+      }
+    },
+    [activeBranch, activeRepoId]
+  );
+
+  const selectBranch = useCallback(
+    (branchName: string) => {
+      setActiveBranch(branchName);
+      if (activeRepoId) {
+        const liveToken = apiClient.getSessionToken();
+        void Promise.all([
+          versionDbServices.records.fetchCollections(activeRepoId, branchName, liveToken),
+          versionDbServices.commits.fetchHistory(activeRepoId, branchName, liveToken),
+        ]).then(([recsRes, histRes]) => {
+          if (recsRes.ok && recsRes.data) {
+            setTables(recsRes.data);
+            if (recsRes.data.length > 0) {
+              const firstTable = recsRes.data[0].name;
+              setSelectedTableName(firstTable);
+              void versionDbServices.records
+                .fetchRecords(activeRepoId, branchName, firstTable, liveToken)
+                .then((rowsRes) => {
+                  if (rowsRes.ok && rowsRes.data) {
+                    setTableRowsByTable((prev) => ({ ...prev, [firstTable]: rowsRes.data! }));
+                  }
+                });
+            }
+          }
+          if (histRes.ok && histRes.data) {
+            setCommits(histRes.data);
+          }
+        });
+      }
+    },
+    [activeRepoId]
+  );
 
   const createBranch = useCallback(
     async (name: string, fromBranch: string): Promise<ServiceOperationResult<BranchRecord>> => {
       setIsOperationPending(true);
+      const liveToken = apiClient.getSessionToken();
       const res = await versionDbServices.branches.createBranch(
         activeRepo?.id || '',
         name,
         fromBranch,
-        authState.sessionToken
+        liveToken
       );
       setIsOperationPending(false);
 
       if (res.ok && res.data) {
-        setBranches((prev) => [res.data!, ...prev]);
+        setBranches((prev) => {
+          const exists = prev.some((b) => b.name === res.data!.name);
+          return exists ? prev : [res.data!, ...prev];
+        });
         setActiveBranch(res.data.name);
         setCreateBranchModalOpen(false);
         pushToast('success', 'Branch Created', `Checked out branch ${res.data.name}.`);
       } else {
         pushToast(
           'error',
-          'Branch Creation Unavailable',
-          res.error || 'Backend branch service is not configured.'
+          res.statusCode === 409 ? 'Branch Already Exists' : 'Branch Creation Failed',
+          res.error || 'Failed to create branch.'
         );
       }
       return res;
     },
-    [activeRepo?.id, authState.sessionToken, pushToast]
+    [activeRepo?.id, pushToast]
+  );
+
+  const deleteBranch = useCallback(
+    async (branchName: string): Promise<ServiceOperationResult<{ success: boolean; branchName: string }>> => {
+      const cleanName = branchName.trim();
+      if (!cleanName) {
+        pushToast('error', 'Invalid Branch', 'Branch name is required for deletion.');
+        return {
+          ok: false,
+          errorCode: 'VALIDATION_ERROR',
+          error: 'Branch name is required for deletion.',
+        };
+      }
+      if (cleanName === activeBranch) {
+        pushToast(
+          'error',
+          'Cannot Delete Active Branch',
+          `Branch "${cleanName}" is currently checked out. Please switch to another branch before deleting.`
+        );
+        return {
+          ok: false,
+          errorCode: 'VALIDATION_ERROR',
+          error: `Branch "${cleanName}" is currently checked out. Switch to another branch first.`,
+        };
+      }
+      if (cleanName === activeRepo?.defaultBranch) {
+        pushToast(
+          'error',
+          'Cannot Delete Default Branch',
+          `Branch "${cleanName}" is the default branch and cannot be deleted.`
+        );
+        return {
+          ok: false,
+          errorCode: 'VALIDATION_ERROR',
+          error: `Branch "${cleanName}" is the default branch and cannot be deleted.`,
+        };
+      }
+      if (!activeRepo?.id) {
+        pushToast(
+          'error',
+          'No Repository Connected',
+          'An active repository is required to delete branches.'
+        );
+        return {
+          ok: false,
+          errorCode: 'VALIDATION_ERROR',
+          error: 'An active repository is required to delete branches.',
+        };
+      }
+
+      setIsOperationPending(true);
+      const liveToken = apiClient.getSessionToken();
+      const res = await versionDbServices.branches.deleteBranch(
+        activeRepo?.id || '',
+        cleanName,
+        liveToken,
+        { activeBranch }
+      );
+      setIsOperationPending(false);
+
+      if (res.ok) {
+        setBranches((prev) => prev.filter((b) => b.name !== cleanName));
+        if (activeBranch === cleanName) {
+          setActiveBranch(activeRepo?.defaultBranch || 'main');
+        }
+        pushToast('success', 'Branch Deleted', `Branch "${cleanName}" was permanently deleted.`);
+      } else {
+        const title =
+          res.statusCode === 409
+            ? 'Branch Deletion Conflict'
+            : res.statusCode === 403
+            ? 'Permission Denied'
+            : res.statusCode === 404
+            ? 'Branch Not Found'
+            : 'Branch Deletion Failed';
+        pushToast('error', title, res.error || 'Failed to delete branch.');
+      }
+      return res;
+    },
+    [activeBranch, activeRepo?.defaultBranch, activeRepo?.id, pushToast]
   );
 
   // Staging & Commits
@@ -1147,9 +1369,13 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   const discardAllStaged = useCallback(() => {
+    if (activeRepoId && activeBranch) {
+      const liveToken = apiClient.getSessionToken();
+      void versionDbServices.records.discardWorkingChanges(activeRepoId, activeBranch, liveToken);
+    }
     setStagedRowMutations([]);
     setStagedDdlChanges([]);
-  }, []);
+  }, [activeBranch, activeRepoId]);
 
   const commitStagedChanges = useCallback(
     async (message: string): Promise<ServiceOperationResult<CommitRecord>> => {
@@ -1170,6 +1396,7 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setStagedDdlChanges([]);
         setCommitModalOpen(false);
         pushToast('success', 'Commit Persisted', `Created commit ${res.data.hash}.`);
+        void refreshWorkspaceCatalog();
       } else {
         pushToast(
           'error',
@@ -1179,7 +1406,7 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
       return res;
     },
-    [activeBranch, activeRepo?.id, authState.sessionToken, pushToast]
+    [activeBranch, activeRepo?.id, authState.sessionToken, pushToast, refreshWorkspaceCatalog]
   );
 
   // SQL Workspace
@@ -1486,27 +1713,47 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const updateUserRole = useCallback(
     async (userId: string, newRole: UserRole): Promise<ServiceOperationResult<UserProfile>> => {
+      if (!activeRepoId) {
+        const errorMsg = 'Select a repository before updating member permissions.';
+        pushToast('error', 'Role Update Failed', errorMsg);
+        return { ok: false, errorCode: 'VALIDATION_ERROR', error: errorMsg };
+      }
       setIsOperationPending(true);
-      const res = await versionDbServices.governance.updateMemberRole(
+      const liveToken = apiClient.getSessionToken();
+      const res = await versionDbServices.members.updateMemberRole(
+        activeRepoId,
         userId,
         newRole,
-        authState.sessionToken
+        liveToken
       );
       setIsOperationPending(false);
 
-      if (res.ok && res.data) {
-        setUsers((prev) => prev.map((u) => (u.id === userId ? res.data! : u)));
+      if (res.ok) {
+        setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u)));
         pushToast('success', 'Role Updated', `Updated role to ${newRole}.`);
+        return {
+          ok: true,
+          statusCode: res.statusCode,
+          data: {
+            id: userId,
+            name: users.find((u) => u.id === userId)?.name || 'Member',
+            handle: users.find((u) => u.id === userId)?.handle || 'member',
+            email: users.find((u) => u.id === userId)?.email || '',
+            role: newRole,
+            title: `${newRole} Member`,
+            avatarUrl: '',
+          },
+        };
       } else {
         pushToast(
           'error',
           'Role Update Failed',
           res.error || 'Cannot modify RBAC roles without an authoritative backend.'
         );
+        return { ok: false, statusCode: res.statusCode, errorCode: res.errorCode, error: res.error };
       }
-      return res;
     },
-    [authState.sessionToken, pushToast]
+    [activeRepoId, pushToast, users]
   );
 
   const exportAuditLedger = useCallback(
@@ -1539,10 +1786,12 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     apiBaseUrl: envConfig.apiBaseUrl,
     isBackendConfigured: envConfig.isBackendConfigured,
     backendConnectionState,
+    connectionDiagnostics,
     lastBackendError,
     isCatalogLoading,
     isOperationPending,
     refreshWorkspaceCatalog,
+    checkBackendHealth,
 
     authState,
     uiRoleHint,
@@ -1575,11 +1824,12 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     compareTargetBranch,
     setCompareTargetBranch,
     createBranch,
+    deleteBranch,
 
     tables,
     views,
     selectedTableName,
-    setSelectedTableName,
+    setSelectedTableName: selectTableName,
     tableRowsByTable,
 
     stagedRowMutations,

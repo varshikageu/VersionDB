@@ -229,10 +229,11 @@ export function mapBackendCommitToRecord(
 export function createVersionDbServices(client: VersionDbApiClient = apiClient) {
   return {
     auth: {
-      async verifySession(sessionToken?: string | null): Promise<ServiceOperationResult<UserProfile>> {
+      async verifySession(sessionToken?: string | null, options?: { silent?: boolean }): Promise<ServiceOperationResult<UserProfile>> {
         const res = await client.request<{ user: BackendUserDto }>('/api/auth/me', {
           method: 'GET',
           sessionToken,
+          silent: options?.silent,
         });
         if (res.ok && res.data) {
           return {
@@ -419,6 +420,7 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
     catalog: {
       async fetchWorkspaceState(
         sessionToken?: string | null,
+        targetRepoId?: string,
         signal?: AbortSignal
       ): Promise<ServiceOperationResult<CatalogSnapshotPayload>> {
         // Fetch repositories first
@@ -446,7 +448,8 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
         let commits: CommitRecord[] = [];
 
         if (repositories.length > 0) {
-          const primaryRepo = repositories[0];
+          const primaryRepo =
+            (targetRepoId && repositories.find((r) => r.id === targetRepoId)) || repositories[0];
 
           // Fetch branches in parallel with members
           const [branchesRes, membersRes] = await Promise.all([
@@ -679,22 +682,104 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
       async createBranch(
         repositoryId: string,
         name: string,
-        _fromBranch: string,
-        _sessionToken?: string | null
+        fromBranch: string,
+        sessionToken?: string | null
       ): Promise<ServiceOperationResult<BranchRecord>> {
-        if (!name.trim()) {
+        const cleanName = name.trim();
+        if (!cleanName) {
           return {
             ok: false,
             errorCode: 'VALIDATION_ERROR',
             error: 'Branch name is required.',
           };
         }
-        // Truthful reporting: backend routes do not expose POST /api/repos/:repoId/branches
+        if (!repositoryId) {
+          return {
+            ok: false,
+            errorCode: 'VALIDATION_ERROR',
+            error: 'Repository ID is required.',
+          };
+        }
+        const res = await client.request<{ branch: BackendBranchDto }>(
+          `/api/repos/${repositoryId}/branches`,
+          {
+            method: 'POST',
+            body: {
+              name: cleanName,
+              sourceBranch: fromBranch.trim() || 'main',
+            },
+            sessionToken,
+          }
+        );
+        if (res.ok && res.data) {
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: mapBackendBranchToRecord(res.data.branch),
+          };
+        }
         return {
           ok: false,
-          errorCode: 'SERVER_ERROR',
-          error:
-            'Branch creation endpoint (POST /api/repos/:repoId/branches) is not implemented in the VersionDB backend.',
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
+        };
+      },
+
+      async deleteBranch(
+        repositoryId: string,
+        name: string,
+        sessionToken?: string | null,
+        options?: { activeBranch?: string }
+      ): Promise<ServiceOperationResult<{ success: boolean; branchName: string }>> {
+        const cleanName = name.trim();
+        if (!cleanName) {
+          return {
+            ok: false,
+            errorCode: 'VALIDATION_ERROR',
+            error: 'Branch name is required.',
+          };
+        }
+        if (!repositoryId) {
+          return {
+            ok: false,
+            errorCode: 'VALIDATION_ERROR',
+            error: 'Repository ID is required.',
+          };
+        }
+        if (options?.activeBranch && cleanName === options.activeBranch) {
+          return {
+            ok: false,
+            errorCode: 'VALIDATION_ERROR',
+            error: `Cannot delete active branch '${cleanName}'. Switch to another branch first.`,
+          };
+        }
+        const query = options?.activeBranch
+          ? `?activeBranch=${encodeURIComponent(options.activeBranch)}`
+          : '';
+        const res = await client.request<{ deleted?: boolean; success?: boolean; branchName?: string }>(
+          `/api/repos/${repositoryId}/branches/${encodeURIComponent(cleanName)}${query}`,
+          {
+            method: 'DELETE',
+            sessionToken,
+            silent: true,
+          }
+        );
+        if (res.ok && res.data) {
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: {
+              success: Boolean((res.data as any).deleted ?? res.data.success ?? true),
+              branchName: res.data.branchName || cleanName,
+            },
+          };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
         };
       },
     },
@@ -1211,22 +1296,15 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
         };
       },
       async updateMemberRole(
-        userId: string,
-        newRole: UserRole,
-        sessionToken?: string | null
+        _userId: string,
+        _newRole: UserRole,
+        _sessionToken?: string | null
       ): Promise<ServiceOperationResult<UserProfile>> {
         return {
-          ok: true,
-          statusCode: 200,
-          data: {
-            id: userId,
-            name: 'Member',
-            handle: 'member',
-            email: 'member@versiondb.local',
-            role: newRole,
-            title: `${newRole} Member`,
-            avatarUrl: '',
-          },
+          ok: false,
+          errorCode: 'SERVER_ERROR',
+          error:
+            'Use members.updateMemberRole with a specific repositoryId to update member permissions on the backend.',
         };
       },
       async exportAuditLogs(
@@ -1237,6 +1315,63 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
           ok: false,
           errorCode: 'SERVER_ERROR',
           error: 'Audit logs export endpoint is not implemented in the VersionDB backend.',
+        };
+      },
+    },
+
+    diagnostics: {
+      /**
+       * Checks backend health via GET /api/health and measures round-trip latency.
+       * Uses silent mode to prevent triggering onUnauthorized callbacks.
+       */
+      async checkHealth(): Promise<ServiceOperationResult<{ status: string; latencyMs: number }>> {
+        const start = performance.now();
+        const res = await client.request<{ status: string }>('/api/health', {
+          method: 'GET',
+          silent: true,
+          skipRefresh: true,
+        });
+        const latencyMs = Math.round(performance.now() - start);
+
+        if (res.ok && res.data) {
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: { status: res.data.status, latencyMs },
+          };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
+        };
+      },
+
+      /**
+       * Checks backend readiness (DB + storage) via GET /api/ready.
+       */
+      async checkReady(): Promise<ServiceOperationResult<{ status: string; latencyMs: number }>> {
+        const start = performance.now();
+        const res = await client.request<{ status: string }>('/api/ready', {
+          method: 'GET',
+          silent: true,
+          skipRefresh: true,
+        });
+        const latencyMs = Math.round(performance.now() - start);
+
+        if (res.ok && res.data) {
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: { status: res.data.status, latencyMs },
+          };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
         };
       },
     },
