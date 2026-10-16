@@ -83,10 +83,10 @@ describe('VersionDB Branch Creation API & Service Tests', () => {
     };
 
     const mockLogger: Logger = {
-      debug: () => {},
-      info: () => {},
-      warn: () => {},
-      error: () => {},
+      debug: () => { },
+      info: () => { },
+      warn: () => { },
+      error: () => { },
       child: () => mockLogger,
     };
 
@@ -109,7 +109,7 @@ describe('VersionDB Branch Creation API & Service Tests', () => {
       register: async () => ({ id: 'mock' }),
       me: async (userId: string) => ({ id: userId }),
       refresh: async () => ({ token: 'mock' }),
-      logout: async () => {},
+      logout: async () => { },
     };
 
     const mockRepositoriesService: any = {
@@ -212,11 +212,34 @@ describe('VersionDB Branch Creation API & Service Tests', () => {
         repositories: mockRepositoriesService,
         history: {} as any,
         records: {} as any,
-        commits: {} as any,
+        commits: {
+          rollback: async (
+            _actor: Actor,
+            repoId: string,
+            branchName: string,
+            targetCommitId: string,
+          ) => {
+            assert.equal(repoId, testRepoId);
+            assert.equal(branchName, 'main');
+            assert.equal(targetCommitId, '123e4567-e89b-42d3-a456-426614174001');
+
+            return {
+              id: '123e4567-e89b-42d3-a456-426614174002',
+              repoId,
+              snapshotHash: 'restored-hash',
+              authorId: 'u-owner',
+              authorName: 'u-owner',
+              message: 'Rollback to target commit',
+              kind: 'revert' as const,
+              createdAt: new Date(),
+              parents: ['123e4567-e89b-42d3-a456-426614174003'],
+            };
+          },
+        } as any,
         idempotency: {
           begin: async () => ({ kind: 'new' }),
-          complete: async () => {},
-          release: async () => {},
+          complete: async () => { },
+          release: async () => { },
         } as any,
       },
     };
@@ -230,6 +253,68 @@ describe('VersionDB Branch Creation API & Service Tests', () => {
   after(() => {
     server?.close();
   });
+
+
+
+  it('rejects unauthenticated rollback with HTTP 401', async () => {
+    const res = await fetch(
+      `${baseUrl}/api/repos/${testRepoId}/branches/main/rollback`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetCommitId: '123e4567-e89b-42d3-a456-426614174001',
+        }),
+      },
+    );
+
+    assert.equal(res.status, 401);
+  });
+
+  it('rejects an invalid rollback target commit ID with HTTP 400', async () => {
+    const res = await fetch(
+      `${baseUrl}/api/repos/${testRepoId}/branches/main/rollback`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer owner-token',
+        },
+        body: JSON.stringify({
+          targetCommitId: 'not-a-valid-uuid',
+        }),
+      },
+    );
+
+    assert.equal(res.status, 400);
+  });
+
+  it('successfully rolls back a branch and returns HTTP 201', async () => {
+    const res = await fetch(
+      `${baseUrl}/api/repos/${testRepoId}/branches/main/rollback`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer owner-token',
+        },
+        body: JSON.stringify({
+          targetCommitId: '123e4567-e89b-42d3-a456-426614174001',
+        }),
+      },
+    );
+
+    assert.equal(res.status, 201);
+
+    const body = (await res.json()) as any;
+    assert.ok(body.commit);
+    assert.equal(body.commit.kind, 'revert');
+    assert.equal(
+      body.commit.id,
+      '123e4567-e89b-42d3-a456-426614174002',
+    );
+  });
+
 
   // --- HTTP Endpoint Tests (Branch Creation) ---
 
@@ -641,7 +726,7 @@ describe('VersionDB Branch Creation API & Service Tests', () => {
   });
 
   it('RepositoryService.deleteBranch rejects default branch', async () => {
-    const mockUow: any = { repos: {}, transaction: async () => {} };
+    const mockUow: any = { repos: {}, transaction: async () => { } };
     const mockMembers: any = {
       authorize: async () => ({
         repo: { id: testRepoId, defaultBranch: 'main' } as any,
@@ -744,7 +829,7 @@ describe('VersionDB Branch Creation API & Service Tests', () => {
   });
 
   it('RepositoryService.deleteBranch rejects active branch when options.activeBranch matches', async () => {
-    const mockUow: any = { repos: {}, transaction: async () => {} };
+    const mockUow: any = { repos: {}, transaction: async () => { } };
     const mockMembers: any = {
       authorize: async () => ({
         repo: { id: testRepoId, defaultBranch: 'main' } as any,
