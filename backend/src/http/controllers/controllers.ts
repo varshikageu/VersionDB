@@ -121,6 +121,19 @@ export function createControllers(c: Container) {
         const p = parse(s.branchParams, req.params);
         res.status(201).json({ commit: await commits.create(actorOf(req), p.repoId, p.branch, parse(s.commitBody, req.body).message) });
       }),
+            rollback: asyncHandler(async (req: Request, res: Response) => {
+        const p = parse(s.branchParams, req.params);
+        const body = parse(s.rollbackBody, req.body);
+
+        const commit = await commits.rollback(
+          actorOf(req),
+          p.repoId,
+          p.branch,
+          body.targetCommitId,
+        );
+
+        res.status(201).json({ commit });
+      }),
       history: asyncHandler(async (req: Request, res: Response) => {
         const p = parse(s.refParams, req.params);
         res.json(await history.log(actorOf(req), p.repoId, p.ref, parse(s.historyQuery, req.query)));

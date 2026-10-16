@@ -44,6 +44,7 @@ export function createApiRouter(c: Container): Router {
 
   // commits and version history
   api.post('/repos/:repoId/branches/:branch/commits', once, ctl.commits.create);
+  api.post('/repos/:repoId/branches/:branch/rollback', ctl.commits.rollback);
   api.get('/repos/:repoId/history/:ref', ctl.commits.history);
   api.get('/repos/:repoId/commits/:commitId', ctl.commits.get);
   api.get('/repos/:repoId/commits/:commitId/records', ctl.records.readCommit);

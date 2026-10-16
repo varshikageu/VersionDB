@@ -54,7 +54,9 @@ export const recordParams = branchParams.extend({
 });
 export const refParams = repoParams.extend({ ref: z.string().min(1).max(64) });
 export const commitParams = repoParams.extend({ commitId: z.string().uuid() });
-
+export const rollbackBody = z.object({
+  targetCommitId: z.string().uuid(),
+});
 export const recordsQuery = z.object({
   collection: z.string().regex(COLLECTION_RE).optional(),
   limit: z.coerce.number().int().min(1).max(LIMITS.maxRecordPage).default(50),
