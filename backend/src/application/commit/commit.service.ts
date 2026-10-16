@@ -80,4 +80,134 @@ export class CommitService {
       throw e;
     }
   }
+  async rollback(
+    actor: Actor,
+    repoId: string,
+    branchName: string,
+    targetCommitId: string,
+  ): Promise<Commit> {
+    await this.members.authorize(actor, repoId, 'commit:create');
+
+    const branch = await this.uow.repos.branches.find(repoId, branchName);
+    if (!branch) throw notFound('Branch');
+
+    const expectedHead = branch.headCommitId;
+    if (expectedHead === null) {
+      throw conflict('EMPTY_BRANCH', 'Cannot roll back a branch with no commits');
+    }
+
+    if (targetCommitId === expectedHead) {
+      throw conflict('ALREADY_AT_TARGET', 'The branch is already at the target commit');
+    }
+
+    // A rollback must never silently discard the caller's pending work.
+    const pendingCount = await this.uow.repos.workingChanges.count(
+      branch.id,
+      actor.userId,
+    );
+    if (pendingCount > 0) {
+      throw conflict(
+        'PENDING_CHANGES',
+        'You have pending changes on this branch. Commit or discard them before rolling back.',
+      );
+    }
+
+    const target = await this.uow.repos.commits.find(repoId, targetCommitId);
+    if (!target) throw notFound('Target commit');
+
+    // Snapshots are immutable, so storing this snapshot is safe before the transaction.
+    const snapshot = await this.snapshots.byHash(repoId, target.snapshotHash);
+    const info = await this.storage.putSnapshot(repoId, snapshot);
+
+    try {
+      return await this.uow.transaction(async (repos) => {
+        const locked = await repos.branches.lock(repoId, branchName);
+        if (!locked) throw notFound('Branch');
+
+        if (locked.headCommitId !== expectedHead) {
+          throw conflict(
+            'HEAD_MOVED',
+            'The branch changed while rolling back. Review and try again.',
+          );
+        }
+
+        // Recheck inside the transaction so newly staged work is not silently lost.
+        const latestPendingCount = await repos.workingChanges.count(
+          locked.id,
+          actor.userId,
+        );
+        if (latestPendingCount > 0) {
+          throw conflict(
+            'PENDING_CHANGES',
+            'You have pending changes on this branch. Commit or discard them before rolling back.',
+          );
+        }
+
+        await repos.commits.registerSnapshot(
+          repoId,
+          info.hash,
+          info.recordCount,
+          info.sizeBytes,
+        );
+
+        const created = await repos.commits.insert({
+          repoId,
+          snapshotHash: info.hash,
+          authorId: actor.userId,
+          message: `Rollback to commit ${targetCommitId}`,
+          kind: 'revert',
+          parents: [expectedHead],
+        });
+
+        // Only an explicit rollback may move a protected branch head.
+        if (locked.protection) {
+          await repos.branches.allowProtectedWrite();
+        }
+
+        if (!(await repos.branches.compareAndSetHead(
+          locked.id,
+          expectedHead,
+          created.id,
+        ))) {
+          throw conflict(
+            'HEAD_MOVED',
+            'The branch changed while rolling back. Review and try again.',
+          );
+        }
+
+        await this.storage.updateRef(
+          repoId,
+          branchName,
+          expectedHead,
+          created.id,
+        );
+
+        await this.audit.log(repos, {
+          repoId,
+          actorId: actor.userId,
+          action: 'commit.rollback',
+          entityType: 'commit',
+          entityId: created.id,
+          metadata: {
+            branch: branchName,
+            targetCommitId,
+            previousHead: expectedHead,
+            records: countRecords(snapshot),
+          },
+          ip: actor.ip,
+        });
+
+        return created;
+      });
+    } catch (e) {
+      if (e instanceof StorageConflictError) {
+        throw conflict(
+          'HEAD_MOVED',
+          'The branch changed while rolling back. Review and try again.',
+        );
+      }
+      throw e;
+    }
+  }
+
 }
