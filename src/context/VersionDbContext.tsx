@@ -106,6 +106,10 @@ interface VersionDbContextValue {
     repoId: string,
     mode: DatabaseConnectionMode
   ) => Promise<ServiceOperationResult<Repository>>;
+  deleteRepository: (
+    repoId: string,
+    confirmationName: string
+  ) => Promise<ServiceOperationResult<{ deleted: boolean; repoId: string; name: string }>>;
 
   branches: BranchRecord[];
   activeBranch: string;
@@ -209,6 +213,13 @@ interface VersionDbContextValue {
     userId: string,
     newRole: UserRole
   ) => Promise<ServiceOperationResult<UserProfile>>;
+  addMember: (
+    email: string,
+    role: UserRole
+  ) => Promise<ServiceOperationResult<void>>;
+  removeMember: (
+    userId: string
+  ) => Promise<ServiceOperationResult<void>>;
   exportAuditLedger: (
     format: 'json' | 'csv'
   ) => Promise<ServiceOperationResult<{ downloadUrl: string }>>;
@@ -792,6 +803,17 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         });
         setBackendConnectionState('connected');
         setLastBackendError(null);
+        // Clear previous user active repo and data so fetchWorkspaceState resolves cleanly for the new user
+        setActiveRepoId('');
+        setActiveBranch('');
+        setRepositories([]);
+        setBranches([]);
+        setTables([]);
+        setTableRowsByTable({});
+        setStagedRowMutations([]);
+        setStagedDdlChanges([]);
+        setCommits([]);
+
         pushToast('success', 'Authenticated', `Signed in as ${res.data.user.email}.`);
         // Navigate first so the user sees the dashboard immediately, then load data in background.
         navigateTo('overview');
@@ -868,6 +890,7 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       localStorage.removeItem('versiondb_refresh_token');
     }
     apiClient.setSessionToken(null);
+    isAuthenticatedRef.current = false;
     setAuthState({
       isAuthenticated: false,
       isInitialLoading: false,
@@ -876,6 +899,34 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       lastCheckedUtc: new Date().toISOString(),
       authError: null,
     });
+
+    // Clear all user-specific repository, branch, working-change, and workspace state
+    // so no data leaks when another user logs in or switches accounts
+    setRepositories([]);
+    setActiveRepoId('');
+    setBranches([]);
+    setActiveBranch('');
+    setCompareTargetBranch('');
+    setTables([]);
+    setViews([]);
+    setSelectedTableName('');
+    setTableRowsByTable({});
+    setStagedRowMutations([]);
+    setStagedDdlChanges([]);
+    setCommits([]);
+    setMergeRequests([]);
+    setSelectedMrNumber(null);
+    setConflicts([]);
+    setSelectedConflictId('');
+    setAdminApprovals([]);
+    setSnapshots([]);
+    setSelectedSnapshotId('');
+    setAuditLogs([]);
+    setSchemaVersions([]);
+    setLineageNodes([]);
+    setUsers([]);
+    setNotifications([]);
+
     pushToast('info', 'Session Cleared', 'Client authentication state has been cleared.');
     navigateTo('login');
   }, [authState.sessionToken, navigateTo, pushToast]);
@@ -1057,6 +1108,84 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     [authState.sessionToken, pushToast]
   );
 
+  const deleteRepository = useCallback(
+    async (
+      repoId: string,
+      confirmationName: string
+    ): Promise<ServiceOperationResult<{ deleted: boolean; repoId: string; name: string }>> => {
+      const targetRepo = repositories.find((r) => r.id === repoId);
+      if (!targetRepo) {
+        pushToast('error', 'Repository Not Found', 'Target repository does not exist.');
+        return {
+          ok: false,
+          errorCode: 'NOT_FOUND',
+          error: 'Repository not found.',
+        };
+      }
+
+      if (confirmationName.trim() !== targetRepo.name) {
+        pushToast(
+          'error',
+          'Name Mismatch',
+          `Type "${targetRepo.name}" exactly to confirm repository deletion.`
+        );
+        return {
+          ok: false,
+          errorCode: 'VALIDATION_ERROR',
+          error: `Repository name "${confirmationName}" does not match "${targetRepo.name}".`,
+        };
+      }
+
+      setIsOperationPending(true);
+      const liveToken = apiClient.getSessionToken();
+      const res = await versionDbServices.repositories.deleteRepository(repoId, liveToken);
+      setIsOperationPending(false);
+
+      if (res.ok) {
+        pushToast('success', 'Repository Deleted', `Repository "${targetRepo.name}" was permanently deleted.`);
+        const remaining = repositories.filter((r) => r.id !== repoId);
+        setRepositories(remaining);
+
+        if (activeRepoId === repoId) {
+          if (remaining.length > 0) {
+            const nextRepo = remaining[0];
+            setActiveRepoId(nextRepo.id);
+            setActiveBranch(nextRepo.defaultBranch || 'main');
+            void refreshWorkspaceCatalog();
+          } else {
+            setActiveRepoId('');
+            setActiveBranch('');
+            setBranches([]);
+            setTables([]);
+            setViews([]);
+            setSelectedTableName('');
+            setTableRowsByTable({});
+            setCommits([]);
+            setMergeRequests([]);
+            setConflicts([]);
+            setAdminApprovals([]);
+            setSnapshots([]);
+            setAuditLogs([]);
+            setSchemaVersions([]);
+            setLineageNodes([]);
+            setUsers([]);
+            setNotifications([]);
+          }
+        }
+      } else {
+        const title =
+          res.statusCode === 403
+            ? 'Permission Denied'
+            : res.statusCode === 404
+            ? 'Repository Not Found'
+            : 'Deletion Failed';
+        pushToast('error', title, res.error || 'Failed to delete repository.');
+      }
+      return res;
+    },
+    [activeRepoId, pushToast, refreshWorkspaceCatalog, repositories]
+  );
+
   const selectTableName = useCallback(
     (tableName: string) => {
       setSelectedTableName(tableName);
@@ -1149,18 +1278,6 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           error: 'Branch name is required for deletion.',
         };
       }
-      if (cleanName === activeBranch) {
-        pushToast(
-          'error',
-          'Cannot Delete Active Branch',
-          `Branch "${cleanName}" is currently checked out. Please switch to another branch before deleting.`
-        );
-        return {
-          ok: false,
-          errorCode: 'VALIDATION_ERROR',
-          error: `Branch "${cleanName}" is currently checked out. Switch to another branch first.`,
-        };
-      }
       if (cleanName === activeRepo?.defaultBranch) {
         pushToast(
           'error',
@@ -1186,23 +1303,54 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         };
       }
 
+      // If deleting the active branch, check if there are uncommitted working changes
+      const hasUncommittedChanges =
+        activeBranch === cleanName &&
+        (stagedRowMutations.length > 0 || stagedDdlChanges.length > 0);
+      if (hasUncommittedChanges) {
+        pushToast(
+          'warning',
+          'Uncommitted Changes Detected',
+          `Branch "${cleanName}" has uncommitted changes. Please commit or discard them before deleting.`
+        );
+        return {
+          ok: false,
+          errorCode: 'VALIDATION_ERROR',
+          error: `Branch "${cleanName}" has uncommitted changes. Please commit or discard them before deleting.`,
+        };
+      }
+
+      const isCurrent = cleanName === activeBranch;
+      const targetFallbackBranch = activeRepo?.defaultBranch || 'main';
+
+      // Automatically switch to the fallback default branch before calling backend deletion if current
+      if (isCurrent) {
+        setActiveBranch(targetFallbackBranch);
+      }
+
       setIsOperationPending(true);
       const liveToken = apiClient.getSessionToken();
+      // We pass the new active branch (targetFallbackBranch) so the backend does not conflict
       const res = await versionDbServices.branches.deleteBranch(
         activeRepo?.id || '',
         cleanName,
         liveToken,
-        { activeBranch }
+        { activeBranch: isCurrent ? targetFallbackBranch : activeBranch }
       );
       setIsOperationPending(false);
 
       if (res.ok) {
         setBranches((prev) => prev.filter((b) => b.name !== cleanName));
-        if (activeBranch === cleanName) {
-          setActiveBranch(activeRepo?.defaultBranch || 'main');
+        if (isCurrent) {
+          // Refresh records and workspace for the fallback branch
+          void refreshWorkspaceCatalog();
         }
         pushToast('success', 'Branch Deleted', `Branch "${cleanName}" was permanently deleted.`);
       } else {
+        // If deletion failed and we had switched activeBranch, revert it back
+        if (isCurrent) {
+          setActiveBranch(cleanName);
+        }
         const title =
           res.statusCode === 409
             ? 'Branch Deletion Conflict'
@@ -1215,7 +1363,7 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
       return res;
     },
-    [activeBranch, activeRepo?.defaultBranch, activeRepo?.id, pushToast]
+    [activeBranch, activeRepo?.defaultBranch, activeRepo?.id, pushToast, refreshWorkspaceCatalog, stagedDdlChanges.length, stagedRowMutations.length]
   );
 
   // Staging & Commits
@@ -1756,6 +1904,52 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     [activeRepoId, pushToast, users]
   );
 
+  const addMember = useCallback(
+    async (email: string, role: UserRole): Promise<ServiceOperationResult<void>> => {
+      if (!activeRepoId) {
+        const errorMsg = 'Select a repository before adding members.';
+        pushToast('error', 'Add Member Failed', errorMsg);
+        return { ok: false, errorCode: 'VALIDATION_ERROR', error: errorMsg };
+      }
+      setIsOperationPending(true);
+      const liveToken = apiClient.getSessionToken();
+      const res = await versionDbServices.members.addMember(activeRepoId, email, role, liveToken);
+      setIsOperationPending(false);
+
+      if (res.ok) {
+        pushToast('success', 'Member Added', `User with email ${email} added as ${role}.`);
+        void refreshWorkspaceCatalog();
+      } else {
+        pushToast('error', 'Add Member Failed', res.error || 'Failed to add member to repository.');
+      }
+      return res;
+    },
+    [activeRepoId, pushToast, refreshWorkspaceCatalog]
+  );
+
+  const removeMember = useCallback(
+    async (userId: string): Promise<ServiceOperationResult<void>> => {
+      if (!activeRepoId) {
+        const errorMsg = 'Select a repository before removing members.';
+        pushToast('error', 'Remove Member Failed', errorMsg);
+        return { ok: false, errorCode: 'VALIDATION_ERROR', error: errorMsg };
+      }
+      setIsOperationPending(true);
+      const liveToken = apiClient.getSessionToken();
+      const res = await versionDbServices.members.removeMember(activeRepoId, userId, liveToken);
+      setIsOperationPending(false);
+
+      if (res.ok) {
+        setUsers((prev) => prev.filter((u) => u.id !== userId));
+        pushToast('success', 'Member Removed', 'Member access revoked.');
+      } else {
+        pushToast('error', 'Remove Member Failed', res.error || 'Failed to remove member.');
+      }
+      return res;
+    },
+    [activeRepoId, pushToast]
+  );
+
   const exportAuditLedger = useCallback(
     async (format: 'json' | 'csv'): Promise<ServiceOperationResult<{ downloadUrl: string }>> => {
       setIsOperationPending(true);
@@ -1816,6 +2010,7 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     activeRepo,
     selectRepository,
     createRepository,
+    deleteRepository,
     setRepositoryConnectionMode,
 
     branches,
@@ -1877,6 +2072,8 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     executeMerge,
     executeRollbackToSnapshot,
     updateUserRole,
+    addMember,
+    removeMember,
     exportAuditLedger,
 
     isCommitModalOpen,

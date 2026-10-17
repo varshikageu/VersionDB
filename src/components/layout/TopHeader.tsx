@@ -57,174 +57,127 @@ export const TopHeader: React.FC = () => {
   const openMrsCount = mergeRequests.filter((mr) => mr.status !== 'MERGED').length;
   const stagedTotal = stagedRowMutations.length + stagedDdlChanges.length;
 
-  // Connection badge driven by real health-check diagnostics instead of hardcoded latency
+  // Connection badge
   const connectionBadge = (() => {
     const diag = connectionDiagnostics;
-
     if (diag.status === 'unconfigured' || (!isBackendConfigured && backendConnectionState === 'unconfigured')) {
-      return {
-        label: 'Backend Not Configured',
-        dotClass: 'bg-[#f59e0b]',
-        pillClass: 'bg-[#fffbeb] text-[#b45309] border-[#f59e0b]/30',
-      };
+      return { label: 'Not Configured', dotClass: 'status-dot-yellow', pillClass: 'bg-amber-50 text-amber-700 border-amber-200' };
     }
     if (diag.status === 'checking') {
-      return {
-        label: 'Checking Service…',
-        dotClass: 'bg-primary animate-pulse',
-        pillClass: 'bg-primary-fixed/40 text-primary border-primary/25',
-      };
+      return { label: 'Checking…', dotClass: 'status-dot-blue', pillClass: 'bg-blue-50 text-blue-600 border-blue-100' };
     }
     if (diag.status === 'connected' && diag.latencyMs !== null) {
-      return {
-        label: `Connected (${diag.latencyMs}ms)`,
-        dotClass: 'bg-[#16a34a]',
-        pillClass: 'bg-[#f0fdf4] text-[#15803d] border-[#16a34a]/20',
-      };
+      return { label: `${diag.latencyMs}ms`, dotClass: 'status-dot-green', pillClass: 'bg-emerald-50 text-emerald-700 border-emerald-100' };
     }
     if (diag.status === 'degraded' && diag.latencyMs !== null) {
-      return {
-        label: `Slow (${diag.latencyMs}ms)`,
-        dotClass: 'bg-[#d97706]',
-        pillClass: 'bg-[#fffbeb] text-[#b45309] border-[#d97706]/25',
-      };
+      return { label: `Slow (${diag.latencyMs}ms)`, dotClass: 'status-dot-yellow', pillClass: 'bg-amber-50 text-amber-700 border-amber-200' };
     }
-    return {
-      label: 'Service Unavailable',
-      dotClass: 'bg-error',
-      pillClass: 'bg-error-container/50 text-on-error-container border-error/20',
-    };
+    return { label: 'Unavailable', dotClass: 'status-dot-red', pillClass: 'bg-red-50 text-red-700 border-red-100' };
   })();
 
   const availableRoles: UserRole[] = ['Admin', 'Reviewer', 'Developer', 'Viewer'];
 
+  const closeAllMenus = () => {
+    setRepoMenuOpen(false);
+    setBranchMenuOpen(false);
+    setRoleMenuOpen(false);
+    setNotifOpen(false);
+  };
+
   return (
     <header
       ref={headerRef}
-      className="fixed top-0 left-0 right-0 h-14 bg-white/90 backdrop-blur-md z-40 flex items-center justify-between px-4 border-b border-surface-container"
+      className="fixed top-0 left-0 right-0 h-14 bg-white/95 backdrop-blur-md z-40 flex items-center justify-between px-4 border-b border-[#e2e5f6] shadow-[0_1px_3px_rgba(16,23,42,0.04)]"
     >
-      {/* Left: Brand + Repository + Branch Selectors */}
-      <div className="flex items-center gap-3">
+      {/* Left: Brand + Selectors */}
+      <div className="flex items-center gap-2">
+        {/* Logo */}
         <button
           type="button"
           onClick={() => navigateTo('overview')}
-          className="flex items-center gap-2.5 text-left group focus:outline-none"
+          className="flex items-center gap-2 focus:outline-none"
         >
-          <VersionDbLogo size={28} className="bg-primary text-white" />
-          <span className="text-lg font-bold tracking-tight text-slate-900 font-headline">
+          <VersionDbLogo size={26} className="bg-[#10172a] text-white rounded-lg" />
+          <span className="text-[15px] font-bold tracking-tight text-[#10172a]">
             VersionDB
           </span>
         </button>
 
-        <div className="h-4 w-[1px] bg-outline-variant/40 mx-1 hidden sm:block" />
+        <span className="text-[#e2e5f6] mx-1 text-lg font-light hidden sm:block">/</span>
 
         {/* Repository Selector */}
         <div className="relative">
           <button
             type="button"
-            onClick={() => {
-              setRepoMenuOpen((v) => !v);
-              setBranchMenuOpen(false);
-              setRoleMenuOpen(false);
-              setNotifOpen(false);
-            }}
-            className="flex items-center gap-2 bg-surface-container-low hover:bg-surface-container px-2.5 py-1 rounded-md text-xs font-medium text-on-surface border border-outline-variant/25 transition-colors"
+            onClick={() => { setRepoMenuOpen((v) => !v); setBranchMenuOpen(false); setRoleMenuOpen(false); setNotifOpen(false); }}
+            className="flex items-center gap-1.5 bg-[#f5f6ff] hover:bg-[#eff4ff] border border-[#d4d8f0] hover:border-[#b3c5ff] px-2.5 py-1.5 rounded-lg text-[12px] font-medium text-[#10172a] transition-all max-w-[200px]"
           >
-            <span className="material-symbols-outlined text-xs text-primary">dns</span>
-            <span className="font-code-sm font-medium max-w-[165px] truncate">
-              {activeRepo ? activeRepo.name : 'No Repository Connected'}
+            <span className="material-symbols-outlined text-[14px] text-[#2563eb] flex-shrink-0">dns</span>
+            <span className="font-mono truncate">
+              {activeRepo ? activeRepo.name : 'No Repository'}
             </span>
             {activeRepo && (
-              <span className="hidden md:inline-block px-1.5 py-0.5 rounded text-[10px] font-label-mono uppercase bg-surface-container-high text-secondary">
+              <span className="badge badge-gray text-[10px] px-1.5 py-0 hidden md:inline-flex">
                 {activeRepo.environment}
               </span>
             )}
-            <span className="material-symbols-outlined text-xs text-secondary">expand_more</span>
+            <span className="material-symbols-outlined text-[14px] text-[#8890b8] flex-shrink-0">expand_more</span>
           </button>
 
           {repoMenuOpen && (
-            <div className="absolute left-0 mt-1.5 w-80 bg-white rounded-xl shadow-lg border border-outline-variant/30 py-1.5 z-50">
-              <div className="px-3 py-1.5 border-b border-surface-container flex items-center justify-between">
-                <span className="font-label-mono text-label-sm uppercase text-secondary">
-                  Database Repositories
-                </span>
+            <div className="absolute left-0 top-full mt-1.5 w-80 vdb-dropdown z-50">
+              <div className="px-3 py-2 border-b border-[#f1f3fb] flex items-center justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-[#8890b8]">Repositories</span>
                 <button
                   type="button"
-                  onClick={() => {
-                    setRepoMenuOpen(false);
-                    navigateTo('repositories');
-                  }}
-                  className="text-[11px] font-medium text-primary hover:underline"
+                  onClick={() => { closeAllMenus(); navigateTo('repositories'); }}
+                  className="text-[11px] font-semibold text-[#2563eb] hover:underline"
                 >
                   Manage All
                 </button>
               </div>
               {repositories.length === 0 ? (
-                <div className="px-3 py-4 text-center space-y-1.5">
-                  <div className="font-body-sm text-xs font-medium text-on-surface">
-                    No Repositories Loaded
-                  </div>
-                  <p className="font-body-sm text-[11px] text-secondary">
+                <div className="px-3 py-5 text-center">
+                  <div className="text-[13px] font-medium text-[#10172a] mb-1">No Repositories</div>
+                  <p className="text-[11px] text-[#5263a0] leading-relaxed">
                     {isBackendConfigured
-                      ? 'No repositories were returned by the backend server.'
-                      : 'Configure VITE_API_BASE_URL to load database repositories from your VersionDB server.'}
+                      ? 'No repositories returned from the backend.'
+                      : 'Configure VITE_API_BASE_URL to connect a VersionDB server.'}
                   </p>
                 </div>
               ) : (
-                <div className="max-h-60 overflow-y-auto divide-y divide-surface-container/60">
+                <div className="max-h-60 overflow-y-auto divide-y divide-[#f1f3fb]">
                   {repositories.map((repo) => (
                     <button
                       key={repo.id}
                       type="button"
-                      onClick={() => {
-                        selectRepository(repo.id);
-                        setRepoMenuOpen(false);
-                      }}
-                      className={`w-full px-3 py-2.5 text-left flex items-start justify-between hover:bg-surface-container-low transition-colors ${
-                        activeRepo?.id === repo.id ? 'bg-primary-fixed/25' : ''
-                      }`}
+                      onClick={() => { selectRepository(repo.id); closeAllMenus(); }}
+                      className={`w-full px-3 py-2.5 text-left flex items-center justify-between hover:bg-[#f5f6ff] transition-colors ${activeRepo?.id === repo.id ? 'bg-[#eff4ff]' : ''}`}
                     >
                       <div>
-                        <div className="font-code-sm text-xs font-semibold text-on-surface flex items-center gap-1.5">
-                          <span>{repo.name}</span>
+                        <div className="text-[12px] font-semibold text-[#10172a] font-mono flex items-center gap-1.5">
+                          {repo.name}
                           {activeRepo?.id === repo.id && (
-                            <span className="material-symbols-outlined text-xs text-primary">
-                              check
-                            </span>
+                            <span className="material-symbols-outlined text-[13px] text-[#2563eb]">check</span>
                           )}
                         </div>
-                        <div className="font-body-sm text-[11px] text-secondary mt-0.5">
-                          {repo.engine} {repo.engineVersion} • {repo.region}
+                        <div className="text-[11px] text-[#5263a0] mt-0.5">
+                          {repo.engine} {repo.engineVersion} · {repo.region}
                         </div>
                       </div>
-                      <span className="px-1.5 py-0.5 rounded bg-surface-container text-[10px] font-label-mono uppercase text-secondary">
-                        {repo.environment}
-                      </span>
+                      <span className="badge badge-gray ml-2">{repo.environment}</span>
                     </button>
                   ))}
                 </div>
               )}
-              <div className="px-2 pt-1.5 mt-1 border-t border-surface-container flex items-center justify-between gap-1">
+              <div className="px-2 py-1.5 border-t border-[#f1f3fb] flex gap-1">
                 <button
                   type="button"
-                  onClick={() => {
-                    setRepoMenuOpen(false);
-                    setCreateRepoModalOpen(true);
-                  }}
-                  className="flex-1 px-2.5 py-1.5 rounded-md text-xs font-medium text-primary hover:bg-primary-fixed/30 flex items-center gap-1.5 transition-colors"
+                  onClick={() => { closeAllMenus(); setCreateRepoModalOpen(true); }}
+                  className="flex-1 px-2.5 py-1.5 rounded-md text-[12px] font-medium text-[#2563eb] hover:bg-[#eff4ff] flex items-center gap-1.5 transition-colors"
                 >
-                  <span className="material-symbols-outlined text-sm">add_circle</span>
-                  Register Repository...
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRepoMenuOpen(false);
-                    navigateTo('workspaces');
-                  }}
-                  className="px-2.5 py-1.5 rounded-md text-xs font-medium text-secondary hover:text-on-surface hover:bg-surface-container-low transition-colors"
-                >
-                  Workspaces
+                  <span className="material-symbols-outlined text-[14px]">add_circle</span>
+                  Register Repository
                 </button>
               </div>
             </div>
@@ -235,207 +188,170 @@ export const TopHeader: React.FC = () => {
         <div className="relative">
           <button
             type="button"
-            onClick={() => {
-              setBranchMenuOpen((v) => !v);
-              setRepoMenuOpen(false);
-              setRoleMenuOpen(false);
-              setNotifOpen(false);
-            }}
-            className="flex items-center gap-1.5 bg-surface-container-low hover:bg-surface-container px-2.5 py-1 rounded-md text-xs font-medium text-on-surface border border-outline-variant/25 transition-colors"
+            onClick={() => { setBranchMenuOpen((v) => !v); setRepoMenuOpen(false); setRoleMenuOpen(false); setNotifOpen(false); }}
+            className="flex items-center gap-1.5 bg-[#f5f6ff] hover:bg-[#eff4ff] border border-[#d4d8f0] hover:border-[#b3c5ff] px-2.5 py-1.5 rounded-lg text-[12px] font-medium text-[#10172a] transition-all max-w-[180px]"
           >
-            <span className="material-symbols-outlined text-xs text-primary">account_tree</span>
-            <span className="font-code-sm max-w-[150px] truncate">
-              {activeBranch || 'No Active Branch'}
-            </span>
-            <span className="material-symbols-outlined text-xs text-secondary">expand_more</span>
+            <span className="material-symbols-outlined text-[14px] text-[#2563eb] flex-shrink-0">account_tree</span>
+            <span className="font-mono truncate">{activeBranch || 'No Branch'}</span>
+            <span className="material-symbols-outlined text-[14px] text-[#8890b8] flex-shrink-0">expand_more</span>
           </button>
 
           {branchMenuOpen && (
-            <div className="absolute left-0 mt-1.5 w-72 bg-white rounded-xl shadow-lg border border-outline-variant/30 py-1.5 z-50">
-              <div className="px-3 py-1.5 border-b border-surface-container flex items-center justify-between">
-                <span className="font-label-mono text-label-sm uppercase text-secondary">
-                  Switch Branch
-                </span>
+            <div className="absolute left-0 top-full mt-1.5 w-72 vdb-dropdown z-50">
+              <div className="px-3 py-2 border-b border-[#f1f3fb] flex items-center justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-[#8890b8]">Switch Branch</span>
                 <button
                   type="button"
-                  onClick={() => {
-                    setBranchMenuOpen(false);
-                    navigateTo('branches');
-                  }}
-                  className="text-[11px] font-medium text-primary hover:underline"
+                  onClick={() => { closeAllMenus(); navigateTo('branches'); }}
+                  className="text-[11px] font-semibold text-[#2563eb] hover:underline"
                 >
                   All Branches
                 </button>
               </div>
               {branches.length === 0 ? (
-                <div className="px-3 py-4 text-center space-y-1">
-                  <div className="font-body-sm text-xs font-medium text-on-surface">
-                    No Branches Available
-                  </div>
-                  <p className="font-body-sm text-[11px] text-secondary">
-                    Connect a repository to list or checkout branches.
-                  </p>
+                <div className="px-3 py-5 text-center">
+                  <div className="text-[13px] font-medium text-[#10172a] mb-1">No Branches</div>
+                  <p className="text-[11px] text-[#5263a0]">Connect a repository to list branches.</p>
                 </div>
               ) : (
-                <div className="max-h-60 overflow-y-auto divide-y divide-surface-container/60">
+                <div className="max-h-60 overflow-y-auto divide-y divide-[#f1f3fb]">
                   {branches.map((b) => (
                     <button
                       key={b.name}
                       type="button"
-                      onClick={() => {
-                        selectBranch(b.name);
-                        setBranchMenuOpen(false);
-                      }}
-                      className={`w-full px-3 py-2 text-left flex items-center justify-between hover:bg-surface-container-low transition-colors ${
-                        activeBranch === b.name ? 'bg-primary-fixed/25' : ''
-                      }`}
+                      onClick={() => { selectBranch(b.name); closeAllMenus(); }}
+                      className={`w-full px-3 py-2 text-left flex items-center justify-between hover:bg-[#f5f6ff] transition-colors ${activeBranch === b.name ? 'bg-[#eff4ff]' : ''}`}
                     >
                       <div className="min-w-0 pr-2">
-                        <div className="font-code-sm text-xs font-medium text-on-surface truncate flex items-center gap-1.5">
-                          <span>{b.name}</span>
+                        <div className="text-[12px] font-mono font-medium text-[#10172a] truncate flex items-center gap-1">
+                          {b.name}
                           {b.isProtected && (
-                            <span className="material-symbols-outlined text-[12px] text-primary">
-                              lock
-                            </span>
+                            <span className="material-symbols-outlined text-[11px] text-[#2563eb]">lock</span>
                           )}
                         </div>
-                        <div className="font-code-sm text-[10px] text-secondary truncate">
-                          {b.headCommitHash} • {b.updatedRelative}
+                        <div className="text-[10px] text-[#5263a0] font-mono mt-0.5 truncate">
+                          {b.headCommitHash} · {b.updatedRelative}
                         </div>
                       </div>
                       {activeBranch === b.name && (
-                        <span className="material-symbols-outlined text-sm text-primary">check</span>
+                        <span className="material-symbols-outlined text-[14px] text-[#2563eb]">check</span>
                       )}
                     </button>
                   ))}
                 </div>
               )}
-              <div className="px-2 pt-1.5 mt-1 border-t border-surface-container">
+              <div className="px-2 py-1.5 border-t border-[#f1f3fb]">
                 <button
                   type="button"
-                  onClick={() => {
-                    setBranchMenuOpen(false);
-                    setCreateBranchModalOpen(true);
-                  }}
-                  className="w-full px-2.5 py-1.5 rounded-md text-xs font-medium text-primary hover:bg-primary-fixed/30 flex items-center gap-1.5 transition-colors"
+                  onClick={() => { closeAllMenus(); setCreateBranchModalOpen(true); }}
+                  className="w-full px-2.5 py-1.5 rounded-md text-[12px] font-medium text-[#2563eb] hover:bg-[#eff4ff] flex items-center gap-1.5 transition-colors"
                 >
-                  <span className="material-symbols-outlined text-sm">call_split</span>
-                  Create New Branch...
+                  <span className="material-symbols-outlined text-[14px]">call_split</span>
+                  Create New Branch
                 </button>
               </div>
             </div>
           )}
         </div>
 
-        {/* Truthful Backend / DB Connection Pill */}
+        {/* Connection status pill */}
         <button
           type="button"
           onClick={() => setApiContractDrawerOpen(true)}
-          className={`hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[11px] font-code-sm transition-colors ${connectionBadge.pillClass}`}
-          title="Inspect Backend Integration Contract & Service Status"
+          className={`hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium transition-colors ${connectionBadge.pillClass}`}
+          title="Backend Integration Contract & Service Status"
         >
-          <span className={`w-1.5 h-1.5 rounded-full ${connectionBadge.dotClass}`} />
-          <span>{connectionBadge.label}</span>
+          <span className={`status-dot ${connectionBadge.dotClass}`} />
+          {connectionBadge.label}
         </button>
       </div>
 
-      {/* Center: Global Search / Command Palette Trigger */}
+      {/* Center: Search */}
       <div className="hidden md:flex items-center flex-1 max-w-xs mx-4">
         <button
           type="button"
           onClick={() => setCommandPaletteOpen(true)}
-          className="w-full flex items-center justify-between bg-surface-container-low hover:bg-surface-container text-secondary px-3 py-1.5 rounded-lg border border-outline-variant/25 text-xs transition-colors"
+          className="w-full flex items-center justify-between bg-[#f5f6ff] hover:bg-[#eff4ff] border border-[#d4d8f0] text-[#8890b8] px-3 py-1.5 rounded-lg text-[12px] transition-colors"
         >
           <span className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-sm">search</span>
-            <span>Jump to screen, action, contract...</span>
+            <span className="material-symbols-outlined text-[15px]">search</span>
+            <span>Quick search…</span>
           </span>
-          <kbd className="px-1.5 py-0.5 text-[10px] font-code-sm bg-white rounded border border-outline-variant/30 text-secondary">
+          <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-white rounded border border-[#d4d8f0] text-[#8890b8]">
             ⌘K
           </kbd>
         </button>
       </div>
 
-      {/* Right: Staged Indicator, API Contract, Notifications, and UI Role Preview / Auth */}
-      <div className="flex items-center gap-2">
+      {/* Right: Actions */}
+      <div className="flex items-center gap-1.5">
+        {/* Staged indicator */}
         {stagedTotal > 0 && (
           <button
             type="button"
             onClick={() => navigateTo('changes-and-diff')}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-primary-fixed/40 text-primary hover:bg-primary-fixed/70 text-xs font-code-sm font-medium transition-colors"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#dce6ff] text-[#1d4ed8] hover:bg-[#b3c5ff] text-[11px] font-semibold transition-colors border border-[#b3c5ff]"
           >
-            <span className="material-symbols-outlined text-xs">difference</span>
-            <span>{stagedTotal} staged</span>
+            <span className="material-symbols-outlined text-[13px]">difference</span>
+            {stagedTotal} staged
           </button>
         )}
 
-        {/* API Contract Drawer Button */}
+        {/* API contract */}
         <button
           type="button"
           onClick={() => setApiContractDrawerOpen(true)}
-          className="p-1.5 text-secondary hover:text-on-surface hover:bg-surface-container-low rounded-md transition-colors"
+          className="w-8 h-8 flex items-center justify-center rounded-lg text-[#8890b8] hover:text-[#10172a] hover:bg-[#f1f3fb] transition-colors"
           title="Backend Integration Contract"
         >
-          <span className="material-symbols-outlined text-lg">api</span>
+          <span className="material-symbols-outlined text-[18px]">api</span>
         </button>
 
-        {/* Notifications Menu */}
+        {/* Notifications */}
         <div className="relative">
           <button
             type="button"
-            onClick={() => {
-              setNotifOpen((v) => !v);
-              setRepoMenuOpen(false);
-              setBranchMenuOpen(false);
-              setRoleMenuOpen(false);
-            }}
-            className="relative p-1.5 text-secondary hover:text-on-surface hover:bg-surface-container-low rounded-md transition-colors"
-            title="Operational Notifications"
+            onClick={() => { setNotifOpen((v) => !v); setRepoMenuOpen(false); setBranchMenuOpen(false); setRoleMenuOpen(false); }}
+            className="relative w-8 h-8 flex items-center justify-center rounded-lg text-[#8890b8] hover:text-[#10172a] hover:bg-[#f1f3fb] transition-colors"
+            title="Notifications"
           >
-            <span className="material-symbols-outlined text-lg">notifications</span>
+            <span className="material-symbols-outlined text-[18px]">notifications</span>
             {unreadNotificationsCount > 0 && (
-              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-error" />
+              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500 border border-white" />
             )}
           </button>
 
           {notifOpen && (
-            <div className="absolute right-0 mt-1.5 w-80 bg-white rounded-xl shadow-lg border border-outline-variant/30 py-2 z-50">
-              <div className="px-3 py-1.5 border-b border-surface-container flex items-center justify-between">
-                <span className="font-label-mono text-label-sm uppercase text-secondary">
-                  Notifications ({unreadNotificationsCount} unread)
+            <div className="absolute right-0 top-full mt-1.5 w-80 vdb-dropdown z-50">
+              <div className="px-3 py-2 border-b border-[#f1f3fb] flex items-center justify-between">
+                <span className="text-[12px] font-semibold text-[#10172a]">
+                  Notifications
+                  {unreadNotificationsCount > 0 && (
+                    <span className="ml-2 badge badge-blue">{unreadNotificationsCount}</span>
+                  )}
                 </span>
                 <div className="flex items-center gap-2">
                   {unreadNotificationsCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={markAllNotificationsAsRead}
-                      className="text-[11px] font-medium text-secondary hover:text-on-surface"
-                    >
+                    <button type="button" onClick={markAllNotificationsAsRead}
+                      className="text-[11px] text-[#5263a0] hover:text-[#10172a]">
                       Mark all read
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setNotifOpen(false);
-                      navigateTo('notifications');
-                    }}
-                    className="text-[11px] font-semibold text-primary hover:underline"
-                  >
-                    View Center
+                  <button type="button"
+                    onClick={() => { closeAllMenus(); navigateTo('notifications'); }}
+                    className="text-[11px] font-semibold text-[#2563eb] hover:underline">
+                    View all
                   </button>
                 </div>
               </div>
-              <div className="max-h-72 overflow-y-auto divide-y divide-surface-container">
+              <div className="max-h-72 overflow-y-auto divide-y divide-[#f1f3fb]">
                 {notifications.length === 0 ? (
-                  <div className="px-3 py-6 text-center space-y-1">
-                    <div className="font-body-sm text-xs font-medium text-on-surface">
-                      No Notifications
-                    </div>
-                    <p className="font-body-sm text-[11px] text-secondary">
+                  <div className="px-3 py-6 text-center">
+                    <div className="text-[13px] font-medium text-[#10172a] mb-1">No Notifications</div>
+                    <p className="text-[11px] text-[#5263a0]">
                       {isBackendConfigured
-                        ? 'No operational alerts returned from the server.'
-                        : 'Operational alerts appear here when a VersionDB backend is connected.'}
+                        ? 'No operational alerts from the server.'
+                        : 'Connect a VersionDB backend to receive alerts.'}
                     </p>
                   </div>
                 ) : (
@@ -443,32 +359,20 @@ export const TopHeader: React.FC = () => {
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() => {
-                        markNotificationAsRead(item.id);
-                        setNotifOpen(false);
-                        navigateTo(item.targetScreen);
-                      }}
-                      className={`w-full px-3 py-2.5 text-left hover:bg-surface-container-low transition-colors ${
-                        !item.read ? 'bg-primary-fixed/15' : ''
-                      }`}
+                      onClick={() => { markNotificationAsRead(item.id); closeAllMenus(); navigateTo(item.targetScreen); }}
+                      className={`w-full px-3 py-2.5 text-left hover:bg-[#f5f6ff] transition-colors ${!item.read ? 'bg-[#eff4ff]' : ''}`}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-body-sm text-xs font-semibold text-on-surface">
-                          {item.title}
-                        </span>
-                        <span className="font-code-sm text-[10px] text-secondary">
-                          {item.timestampRelative}
-                        </span>
+                        <span className="text-[12px] font-semibold text-[#10172a]">{item.title}</span>
+                        <span className="text-[10px] font-mono text-[#5263a0] shrink-0">{item.timestampRelative}</span>
                       </div>
-                      <p className="font-body-sm text-[11px] text-secondary mt-0.5 line-clamp-2">
-                        {item.message}
-                      </p>
+                      <p className="text-[11px] text-[#5263a0] mt-0.5 line-clamp-2">{item.message}</p>
                     </button>
                   ))
                 )}
               </div>
               {(unresolvedConflictsCount > 0 || openMrsCount > 0) && (
-                <div className="px-3 pt-2 mt-1 border-t border-surface-container flex items-center justify-between text-[11px] font-code-sm text-secondary">
+                <div className="px-3 py-2 border-t border-[#f1f3fb] flex items-center justify-between text-[11px] font-mono text-[#5263a0]">
                   <span>Open MRs: {openMrsCount}</span>
                   <span>Conflicts: {unresolvedConflictsCount}</span>
                 </div>
@@ -477,135 +381,89 @@ export const TopHeader: React.FC = () => {
           )}
         </div>
 
-        {/* UI Role Preview & Auth Status Dropdown */}
+        {/* User Menu */}
         <div className="relative">
           <button
             type="button"
-            onClick={() => {
-              setRoleMenuOpen((v) => !v);
-              setRepoMenuOpen(false);
-              setBranchMenuOpen(false);
-              setNotifOpen(false);
-            }}
-            className="flex items-center gap-2 pl-2 pr-2.5 py-1 rounded-full bg-surface-container-low hover:bg-surface-container border border-outline-variant/25 transition-colors"
-            title="UI Role Layout Switcher & Session State"
+            onClick={() => { setRoleMenuOpen((v) => !v); setRepoMenuOpen(false); setBranchMenuOpen(false); setNotifOpen(false); }}
+            className="flex items-center gap-2 pl-1.5 pr-2.5 py-1 rounded-full bg-[#f5f6ff] hover:bg-[#eff4ff] border border-[#d4d8f0] transition-all"
           >
             {currentUser.avatarUrl ? (
-              <img
-                src={currentUser.avatarUrl}
-                alt={currentUser.name}
-                className="w-6 h-6 rounded-full object-cover border border-primary/20"
-              />
+              <img src={currentUser.avatarUrl} alt={currentUser.name}
+                className="w-6 h-6 rounded-full object-cover" />
             ) : (
-              <div className="w-6 h-6 rounded-full bg-surface-container-high flex items-center justify-center text-secondary">
-                <span className="material-symbols-outlined text-sm">person</span>
+              <div className="w-6 h-6 rounded-full bg-[#e8ebf8] flex items-center justify-center">
+                <span className="material-symbols-outlined text-[14px] text-[#5263a0]">person</span>
               </div>
             )}
             <div className="hidden sm:flex flex-col items-start leading-none">
-              <span className="text-[11px] font-semibold text-on-surface">
+              <span className="text-[11px] font-semibold text-[#10172a]">
                 {authState.isAuthenticated ? currentUser.name : 'Unauthenticated'}
               </span>
-              <span className="text-[10px] font-label-mono uppercase text-primary">
-                UI Hint: {currentUser.role}
+              <span className="text-[10px] font-mono text-[#2563eb]">
+                {currentUser.role}
               </span>
             </div>
-            <span className="material-symbols-outlined text-xs text-secondary">expand_more</span>
+            <span className="material-symbols-outlined text-[14px] text-[#8890b8]">expand_more</span>
           </button>
 
           {roleMenuOpen && (
-            <div className="absolute right-0 mt-1.5 w-80 bg-white rounded-xl shadow-lg border border-outline-variant/30 py-2 z-50">
-              <div className="px-3 py-2 border-b border-surface-container">
-                <div className="font-label-mono text-label-sm uppercase text-secondary">
-                  UI Role Presentation Hint
+            <div className="absolute right-0 top-full mt-1.5 w-80 vdb-dropdown z-50">
+              <div className="px-3 py-2.5 border-b border-[#f1f3fb]">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#8890b8] mb-0.5">
+                  UI Role Preview
                 </div>
-                <p className="font-body-sm text-[11px] text-secondary mt-0.5">
-                  Previews role-conditioned UI states only. Does not grant backend permissions or authenticate a user.
+                <p className="text-[11px] text-[#5263a0]">
+                  Previews role-conditioned UI only. Does not grant backend permissions.
                 </p>
               </div>
-              <div className="divide-y divide-surface-container/60">
+              <div className="divide-y divide-[#f1f3fb]">
                 {availableRoles.map((role) => (
                   <button
                     key={role}
                     type="button"
-                    onClick={() => {
-                      switchUserOrRole(role);
-                      setRoleMenuOpen(false);
-                    }}
-                    className={`w-full px-3 py-2 text-left flex items-center justify-between hover:bg-surface-container-low transition-colors ${
-                      currentUser.role === role ? 'bg-primary-fixed/25' : ''
-                    }`}
+                    onClick={() => { switchUserOrRole(role); closeAllMenus(); }}
+                    className={`w-full px-3 py-2 text-left flex items-center justify-between hover:bg-[#f5f6ff] transition-colors ${currentUser.role === role ? 'bg-[#eff4ff]' : ''}`}
                   >
                     <div className="flex items-center gap-2">
-                      <span className="material-symbols-outlined text-sm text-secondary">
-                        badge
-                      </span>
-                      <span className="font-body-sm text-xs font-semibold text-on-surface">
-                        {role} Layout Preview
-                      </span>
+                      <span className="material-symbols-outlined text-[15px] text-[#8890b8]">badge</span>
+                      <span className="text-[12px] font-semibold text-[#10172a]">{role} Layout</span>
                     </div>
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-label-mono uppercase font-semibold ${
-                        role === 'Admin'
-                          ? 'bg-primary-fixed text-primary'
-                          : role === 'Reviewer'
-                            ? 'bg-[#dcfce7] text-[#15803d]'
-                            : role === 'Developer'
-                              ? 'bg-[#fef3c7] text-[#b45309]'
-                              : 'bg-surface-container-high text-secondary'
-                      }`}
-                    >
-                      {role}
-                    </span>
+                    <span className={`badge text-[10px] ${
+                      role === 'Admin' ? 'badge-blue'
+                      : role === 'Reviewer' ? 'badge-green'
+                      : role === 'Developer' ? 'badge-yellow'
+                      : 'badge-gray'
+                    }`}>{role}</span>
                   </button>
                 ))}
               </div>
-              <div className="px-3 py-2 border-t border-surface-container bg-surface-container-low/60 space-y-1.5">
-                <div className="flex items-center justify-between text-[11px] font-code-sm">
-                  <span className="text-secondary">Backend Session:</span>
-                  <span
-                    className={
-                      authState.isAuthenticated
-                        ? 'text-[#15803d] font-semibold'
-                        : 'text-[#b45309] font-semibold'
-                    }
-                  >
+              <div className="px-3 py-2.5 border-t border-[#f1f3fb] bg-[#f5f6ff] space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] font-mono">
+                  <span className="text-[#5263a0]">Backend Session</span>
+                  <span className={authState.isAuthenticated ? 'text-emerald-600 font-semibold' : 'text-amber-600 font-semibold'}>
                     {authState.isAuthenticated ? 'Active' : 'Not Authenticated'}
                   </span>
                 </div>
-                <div className="grid grid-cols-2 gap-1.5 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRoleMenuOpen(false);
-                      navigateTo('profile');
-                    }}
-                    className="px-2.5 py-1.5 rounded bg-white hover:bg-surface-container text-on-surface border border-outline-variant/25 font-body-sm text-xs font-medium flex items-center justify-center gap-1"
-                  >
-                    <span className="material-symbols-outlined text-xs">manage_accounts</span>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button type="button"
+                    onClick={() => { closeAllMenus(); navigateTo('profile'); }}
+                    className="btn-secondary py-1.5 text-[12px] justify-center">
+                    <span className="material-symbols-outlined text-[13px]">manage_accounts</span>
                     Account
                   </button>
                   {authState.isAuthenticated ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setRoleMenuOpen(false);
-                        void signOutSession();
-                      }}
-                      className="px-2.5 py-1.5 rounded bg-white hover:bg-error-container/30 text-error border border-outline-variant/25 font-body-sm text-xs font-medium flex items-center justify-center gap-1"
-                    >
-                      <span className="material-symbols-outlined text-xs">logout</span>
+                    <button type="button"
+                      onClick={() => { closeAllMenus(); void signOutSession(); }}
+                      className="btn-danger py-1.5 text-[12px] justify-center">
+                      <span className="material-symbols-outlined text-[13px]">logout</span>
                       Sign Out
                     </button>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setRoleMenuOpen(false);
-                        navigateTo('login');
-                      }}
-                      className="px-2.5 py-1.5 rounded bg-primary text-white hover:opacity-95 font-body-sm text-xs font-medium flex items-center justify-center gap-1"
-                    >
-                      <span className="material-symbols-outlined text-xs">login</span>
+                    <button type="button"
+                      onClick={() => { closeAllMenus(); navigateTo('login'); }}
+                      className="btn-primary py-1.5 text-[12px] justify-center">
+                      <span className="material-symbols-outlined text-[13px]">login</span>
                       Sign In
                     </button>
                   )}

@@ -29,25 +29,26 @@ export const SchemaExplorerScreen: React.FC = () => {
   const activeTable = tables.find((t) => t.name === selectedTableName) || tables[0] || null;
 
   return (
-    <div className="flex flex-col w-full pb-12 pt-2 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="vdb-page">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="font-label-mono text-label-sm uppercase text-primary mb-1">
+          <div className="text-[11px] font-mono text-[#2563eb] font-semibold uppercase tracking-wider mb-1">
             Relational Catalog Metadata
           </div>
-          <h1 className="font-headline text-headline-lg text-on-surface">
+          <h1 className="text-[22px] font-bold text-[#10172a] tracking-tight">
             Schema Explorer (Tables, Columns & Views)
           </h1>
-          <p className="font-body-sm text-body-sm text-secondary mt-0.5">
-            Introspect table structures, primary/foreign keys, indexes, and DDL definitions from the
-            connected branch.
+          <p className="text-[13px] text-[#5263a0] mt-0.5">
+            Introspect table structures, primary/foreign keys, indexes, and DDL definitions from the connected branch.
           </p>
         </div>
         <button
           type="button"
           onClick={() => navigateTo('sql-workspace')}
-          className="px-3.5 py-2 rounded-lg bg-surface-container-low hover:bg-surface-container text-on-surface font-body-sm text-xs font-medium border border-outline-variant/25"
+          className="btn-secondary"
         >
+          <span className="material-symbols-outlined text-[15px] text-[#2563eb]">terminal</span>
           Open SQL Workspace
         </button>
       </div>
@@ -72,9 +73,9 @@ export const SchemaExplorerScreen: React.FC = () => {
           onAction={() => navigateTo('repositories')}
         />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-4 bg-surface-container-lowest rounded-xl border border-outline-variant/25 p-4 space-y-3">
-            <div className="font-label-mono text-label-sm uppercase text-secondary">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+          <div className="lg:col-span-4 vdb-card p-4 space-y-3">
+            <div className="text-[11px] font-mono text-[#5263a0] uppercase tracking-wider font-semibold pb-2 border-b border-[#f1f3fb]">
               Tables ({tables.length})
             </div>
             <div className="space-y-1">
@@ -83,16 +84,16 @@ export const SchemaExplorerScreen: React.FC = () => {
                   key={t.name}
                   type="button"
                   onClick={() => setSelectedTableName(t.name)}
-                  className={`w-full text-left px-3 py-2 rounded-lg font-code-sm text-xs flex items-center justify-between ${
+                  className={`w-full text-left px-3 py-2 rounded-lg font-mono text-[12px] flex items-center justify-between transition-colors ${
                     activeTable?.name === t.name
-                      ? 'bg-primary-fixed/30 text-primary font-semibold'
-                      : 'text-on-surface hover:bg-surface-container-low'
+                      ? 'bg-[#eff4ff] text-[#2563eb] font-semibold border border-[#c2d4ff]'
+                      : 'text-[#10172a] hover:bg-[#f8f9ff]'
                   }`}
                 >
-                  <span>
+                  <span className="truncate">
                     {t.schema}.{t.name}
                   </span>
-                  <span className="text-[10px] text-secondary">{t.rowCountLabel}</span>
+                  <span className="text-[10px] text-[#8890b8] shrink-0">{t.rowCountLabel}</span>
                 </button>
               ))}
             </div>
@@ -100,51 +101,62 @@ export const SchemaExplorerScreen: React.FC = () => {
 
           <div className="lg:col-span-8 space-y-4">
             {activeTable && (
-              <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/25 p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="font-code-sm text-sm font-bold text-on-surface">
-                    {activeTable.schema}.{activeTable.name}
-                  </h2>
-                  <span className="font-code-sm text-xs text-secondary">
+              <div className="vdb-card p-6 space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-[#f1f3fb]">
+                  <div>
+                    <h2 className="font-mono text-[16px] font-bold text-[#10172a]">
+                      {activeTable.schema}.{activeTable.name}
+                    </h2>
+                    <span className="text-[12px] text-[#5263a0]">
+                      Total Rows: {activeTable.rowCountLabel}
+                    </span>
+                  </div>
+                  <span className="badge badge-blue">
                     PK: {activeTable.primaryKey}
                   </span>
                 </div>
 
-                <table className="w-full text-left border-collapse font-code-sm text-xs">
-                  <thead>
-                    <tr className="border-b border-surface-container text-secondary">
-                      <th className="py-2">Column</th>
-                      <th className="py-2">Type</th>
-                      <th className="py-2">Nullable</th>
-                      <th className="py-2">Default</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-surface-container">
-                    {activeTable.columns.map((col) => (
-                      <tr key={col.name}>
-                        <td className="py-2 font-semibold text-on-surface">{col.name}</td>
-                        <td className="py-2 text-primary">{col.dataType}</td>
-                        <td className="py-2 text-secondary">{col.nullable ? 'YES' : 'NO'}</td>
-                        <td className="py-2 text-secondary">{col.defaultValue || '—'}</td>
+                <div className="overflow-x-auto">
+                  <table className="vdb-table font-mono text-[12px]">
+                    <thead>
+                      <tr>
+                        <th>Column</th>
+                        <th>Type</th>
+                        <th>Nullable</th>
+                        <th>Default</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {activeTable.columns.map((col) => (
+                        <tr key={col.name}>
+                          <td className="font-semibold text-[#10172a]">{col.name}</td>
+                          <td className="text-[#2563eb]">{col.dataType}</td>
+                          <td>
+                            <span className={`badge ${col.nullable ? 'badge-neutral' : 'badge-amber'}`}>
+                              {col.nullable ? 'YES' : 'NO'}
+                            </span>
+                          </td>
+                          <td className="text-[#5263a0]">{col.defaultValue || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
 
-                <div className="pt-3 border-t border-surface-container flex flex-wrap items-center gap-2">
+                <div className="pt-4 border-t border-[#f1f3fb] flex flex-wrap items-center gap-2.5">
                   <input
                     type="text"
                     value={newColName}
                     onChange={(e) => setNewColName(e.target.value)}
                     placeholder="New column name"
-                    className="px-3 py-1.5 rounded-lg border border-outline-variant/40 font-code-sm text-xs"
+                    className="vdb-input font-mono text-[12px] py-1.5 w-44"
                   />
                   <input
                     type="text"
                     value={newColType}
                     onChange={(e) => setNewColType(e.target.value)}
-                    placeholder="Data type"
-                    className="px-3 py-1.5 rounded-lg border border-outline-variant/40 font-code-sm text-xs"
+                    placeholder="Data type (e.g. VARCHAR(255))"
+                    className="vdb-input font-mono text-[12px] py-1.5 w-52"
                   />
                   <button
                     type="button"
@@ -156,7 +168,7 @@ export const SchemaExplorerScreen: React.FC = () => {
                         `Add column ${newColName.trim()} to ${activeTable.name}`
                       )
                     }
-                    className="px-3.5 py-1.5 rounded-lg bg-primary text-white font-body-sm text-xs font-semibold disabled:opacity-50"
+                    className="btn-primary text-[12px] py-2"
                   >
                     Stage ALTER TABLE
                   </button>

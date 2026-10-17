@@ -31,18 +31,18 @@ export const ChangesDiffScreen: React.FC = () => {
   const totalStaged = stagedRowMutations.length + stagedDdlChanges.length;
 
   return (
-    <div className="flex flex-col w-full pb-12 pt-2 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="vdb-page">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="font-label-mono text-label-sm uppercase text-primary mb-1">
+          <div className="text-[11px] font-mono text-[#2563eb] font-semibold uppercase tracking-wider mb-1">
             Staged Mutations & Branch Comparison
           </div>
-          <h1 className="font-headline text-headline-lg text-on-surface">
+          <h1 className="text-[22px] font-bold text-[#10172a] tracking-tight">
             Changes & 3-Way Diff Inspector
           </h1>
-          <p className="font-body-sm text-body-sm text-secondary mt-0.5">
-            Inspect staged DDL/DML changes and compare schema or primary-key record divergence
-            between branches.
+          <p className="text-[13px] text-[#5263a0] mt-0.5">
+            Inspect staged DDL/DML changes and compare schema or primary-key record divergence between branches.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -51,15 +51,16 @@ export const ChangesDiffScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={discardAllStaged}
-                className="px-3.5 py-2 rounded-lg bg-surface-container-low hover:bg-surface-container text-secondary font-body-sm text-xs font-medium border border-outline-variant/25"
+                className="btn-secondary text-red-600 hover:bg-red-50 hover:border-red-200"
               >
                 Discard Staged ({totalStaged})
               </button>
               <button
                 type="button"
                 onClick={() => setCommitModalOpen(true)}
-                className="px-4 py-2 rounded-lg bg-gradient-to-b from-primary to-primary-container text-on-primary font-body-sm text-xs font-semibold shadow-sm"
+                className="btn-primary"
               >
+                <span className="material-symbols-outlined text-[15px]">commit</span>
                 Commit Staged ({totalStaged})
               </button>
             </>
@@ -67,8 +68,9 @@ export const ChangesDiffScreen: React.FC = () => {
           <button
             type="button"
             onClick={() => setCreateMrModalOpen(true)}
-            className="px-3.5 py-2 rounded-lg bg-surface-container-low hover:bg-surface-container text-on-surface font-body-sm text-xs font-semibold border border-outline-variant/25"
+            className="btn-secondary"
           >
+            <span className="material-symbols-outlined text-[15px] text-[#2563eb]">merge</span>
             Open Merge Request
           </button>
         </div>
@@ -84,15 +86,15 @@ export const ChangesDiffScreen: React.FC = () => {
       />
 
       {/* Branch Selector Bar */}
-      <div className="p-4 rounded-xl bg-surface-container-lowest border border-outline-variant/25 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-3 text-xs">
+      <div className="p-3.5 rounded-xl bg-white border border-[#e2e5f6] flex flex-wrap items-center justify-between gap-4 shadow-[0_1px_3px_rgba(16,23,42,0.04)]">
+        <div className="flex flex-wrap items-center gap-3 text-[12px]">
           <div className="flex items-center gap-2">
-            <span className="font-label-mono uppercase text-secondary">Source Branch:</span>
+            <span className="font-mono text-[#5263a0] uppercase tracking-wider text-[11px]">Source:</span>
             <select
               value={activeBranch}
               onChange={(e) => selectBranch(e.target.value)}
               disabled={branches.length === 0}
-              className="rounded-lg border border-outline-variant/30 bg-surface-container-low px-2.5 py-1.5 font-code-sm text-xs text-on-surface"
+              className="rounded-lg border border-[#e2e5f6] bg-[#f8f9ff] px-2.5 py-1 font-mono text-[12px] text-[#10172a] focus:outline-none focus:border-[#2563eb]"
             >
               {branches.length === 0 ? (
                 <option value="">No branches available</option>
@@ -105,14 +107,14 @@ export const ChangesDiffScreen: React.FC = () => {
               )}
             </select>
           </div>
-          <span className="material-symbols-outlined text-sm text-secondary">compare_arrows</span>
+          <span className="material-symbols-outlined text-[16px] text-[#8890b8]">arrow_forward</span>
           <div className="flex items-center gap-2">
-            <span className="font-label-mono uppercase text-secondary">Target Branch:</span>
+            <span className="font-mono text-[#5263a0] uppercase tracking-wider text-[11px]">Target:</span>
             <select
               value={compareTargetBranch}
               onChange={(e) => setCompareTargetBranch(e.target.value)}
               disabled={branches.length === 0}
-              className="rounded-lg border border-outline-variant/30 bg-surface-container-low px-2.5 py-1.5 font-code-sm text-xs text-on-surface"
+              className="rounded-lg border border-[#e2e5f6] bg-[#f8f9ff] px-2.5 py-1 font-mono text-[12px] text-[#10172a] focus:outline-none focus:border-[#2563eb]"
             >
               {branches.length === 0 ? (
                 <option value="">No branches available</option>
@@ -126,9 +128,9 @@ export const ChangesDiffScreen: React.FC = () => {
             </select>
           </div>
         </div>
-        <div className="font-code-sm text-xs text-secondary">
-          {stagedDdlChanges.length} DDL staged • {stagedRowMutations.length} DML row mutations
-          staged
+        <div className="font-mono text-[12px] text-[#5263a0]">
+          <span className="font-semibold text-[#10172a]">{stagedDdlChanges.length}</span> DDL staged •{' '}
+          <span className="font-semibold text-[#10172a]">{stagedRowMutations.length}</span> DML staged
         </div>
       </div>
 
@@ -145,25 +147,26 @@ export const ChangesDiffScreen: React.FC = () => {
           onSecondaryAction={() => navigateTo('table-data')}
         />
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3.5">
           {stagedDdlChanges.map((ddl) => (
             <div
               key={ddl.id}
-              className="p-4 rounded-xl bg-surface-container-lowest border border-outline-variant/25 space-y-2"
+              className="vdb-card p-4 space-y-2.5"
             >
               <div className="flex items-center justify-between">
-                <span className="font-code-sm text-xs font-semibold text-primary">
-                  DDL • {ddl.table}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="badge badge-blue">DDL Mutation</span>
+                  <span className="font-mono text-[13px] font-semibold text-[#10172a]">{ddl.table}</span>
+                </div>
                 <button
                   type="button"
                   onClick={() => discardStagedItem(ddl.id)}
-                  className="text-xs text-error hover:underline"
+                  className="text-[12px] font-medium text-red-600 hover:text-red-700 hover:underline"
                 >
                   Discard
                 </button>
               </div>
-              <pre className="p-3 rounded-lg bg-surface-container-low font-code-sm text-xs text-on-surface overflow-x-auto">
+              <pre className="p-3 rounded-lg bg-[#f8f9ff] border border-[#e2e5f6] font-mono text-[11px] text-[#10172a] overflow-x-auto">
                 {ddl.statement}
               </pre>
             </div>
@@ -171,22 +174,36 @@ export const ChangesDiffScreen: React.FC = () => {
           {stagedRowMutations.map((row) => (
             <div
               key={row.id}
-              className="p-4 rounded-xl bg-surface-container-lowest border border-outline-variant/25 flex items-center justify-between"
+              className="vdb-card p-4 flex items-center justify-between gap-4"
             >
               <div>
-                <div className="font-code-sm text-xs font-semibold text-on-surface">
-                  {row.operation} on {row.table} (PK: {row.primaryKeyValue})
+                <div className="flex items-center gap-2">
+                  <span className={`badge ${
+                    row.operation === 'INSERT'
+                      ? 'badge-emerald'
+                      : row.operation === 'DELETE'
+                      ? 'badge-red'
+                      : 'badge-blue'
+                  }`}>
+                    {row.operation}
+                  </span>
+                  <span className="font-mono text-[13px] font-semibold text-[#10172a]">
+                    {row.table}
+                  </span>
+                  <span className="font-mono text-[11px] text-[#5263a0]">
+                    (PK: {row.primaryKeyValue})
+                  </span>
                 </div>
                 {row.columnName && (
-                  <div className="font-code-sm text-[11px] text-secondary mt-0.5">
-                    {row.columnName}: {String(row.oldValue)} → {String(row.newValue)}
+                  <div className="font-mono text-[11px] text-[#5263a0] mt-1 pl-1">
+                    <span className="text-[#10172a] font-medium">{row.columnName}</span>: <span className="text-red-500 line-through">{String(row.oldValue)}</span> → <span className="text-emerald-600 font-semibold">{String(row.newValue)}</span>
                   </div>
                 )}
               </div>
               <button
                 type="button"
                 onClick={() => discardStagedItem(row.id)}
-                className="text-xs text-error hover:underline"
+                className="text-[12px] font-medium text-red-600 hover:text-red-700 hover:underline shrink-0"
               >
                 Discard
               </button>

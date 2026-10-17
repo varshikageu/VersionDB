@@ -114,55 +114,57 @@ export const GlobalModals: React.FC = () => {
     <>
       {/* 1. Commit Staged Changes Modal */}
       {isCommitModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl border border-outline-variant/30 w-full max-w-lg overflow-hidden">
-            <div className="px-5 py-4 border-b border-surface-container flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary">commit</span>
-                <h3 className="font-headline text-title-md text-on-surface">
+        <div className="fixed inset-0 z-50 bg-[#10172a]/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-xl shadow-[0_20px_40px_rgba(16,23,42,0.15)] border border-[#e2e5f6] w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-[#f1f3fb] flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-[#eff4ff] flex items-center justify-center text-[#2563eb]">
+                  <span className="material-symbols-outlined text-[18px]">commit</span>
+                </div>
+                <h3 className="text-[15px] font-semibold text-[#10172a]">
                   Create Database Commit
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setCommitModalOpen(false)}
-                className="text-secondary hover:text-on-surface"
+                className="text-[#8890b8] hover:text-[#10172a] rounded-lg p-1 transition-colors"
               >
-                <span className="material-symbols-outlined text-lg">close</span>
+                <span className="material-symbols-outlined text-[18px]">close</span>
               </button>
             </div>
-            <div className="p-5 space-y-4">
+            <div className="p-6 space-y-4">
               {commitModalError && (
-                <div className="p-3 rounded-lg bg-error-container/30 border border-error/30 font-body-sm text-xs text-error">
+                <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-[12px] text-red-700">
                   {commitModalError}
                 </div>
               )}
-              <div className="flex items-center justify-between text-xs bg-surface-container-low px-3 py-2 rounded-lg border border-outline-variant/20">
-                <span className="text-secondary">Target Branch:</span>
-                <span className="font-code-sm font-semibold text-primary">
+              <div className="flex items-center justify-between text-[12px] bg-[#f8f9ff] px-3.5 py-2.5 rounded-xl border border-[#e2e5f6]">
+                <span className="text-[#5263a0]">Target Branch:</span>
+                <span className="font-mono font-semibold text-[#2563eb]">
                   {activeBranch || 'None'}
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="p-3 rounded-lg bg-surface-container-low border border-outline-variant/15">
-                  <div className="font-label-mono text-label-sm uppercase text-secondary">
+              <div className="grid grid-cols-2 gap-3 text-[12px]">
+                <div className="p-3 rounded-xl bg-[#f8f9ff] border border-[#e2e5f6]">
+                  <div className="text-[11px] font-mono uppercase text-[#5263a0]">
                     Staged DDL Statements
                   </div>
-                  <div className="font-headline text-lg font-bold text-on-surface mt-0.5">
+                  <div className="text-[20px] font-bold text-[#10172a] mt-0.5">
                     {stagedDdlChanges.length}
                   </div>
                 </div>
-                <div className="p-3 rounded-lg bg-surface-container-low border border-outline-variant/15">
-                  <div className="font-label-mono text-label-sm uppercase text-secondary">
+                <div className="p-3 rounded-xl bg-[#f8f9ff] border border-[#e2e5f6]">
+                  <div className="text-[11px] font-mono uppercase text-[#5263a0]">
                     Staged Row Mutations
                   </div>
-                  <div className="font-headline text-lg font-bold text-on-surface mt-0.5">
+                  <div className="text-[20px] font-bold text-[#10172a] mt-0.5">
                     {stagedRowMutations.length}
                   </div>
                 </div>
               </div>
               <div>
-                <label className="block font-label-mono text-label-sm uppercase text-secondary mb-1.5">
+                <label className="block text-[12px] font-semibold text-[#10172a] mb-1.5">
                   Commit Message
                 </label>
                 <textarea
@@ -170,15 +172,15 @@ export const GlobalModals: React.FC = () => {
                   value={commitMessage}
                   onChange={(e) => setCommitMessage(e.target.value)}
                   placeholder="Describe the schema or record changes in this commit..."
-                  className="w-full rounded-lg border border-outline-variant/40 bg-surface-container-lowest px-3 py-2 font-code-sm text-xs text-on-surface focus:outline-none focus:border-primary"
+                  className="vdb-input w-full font-mono text-[12px]"
                 />
               </div>
             </div>
-            <div className="px-5 py-3 bg-surface-container-low border-t border-surface-container flex items-center justify-end gap-2">
+            <div className="px-6 py-3.5 bg-[#fbfbfe] border-t border-[#f1f3fb] flex items-center justify-end gap-2.5">
               <button
                 type="button"
                 onClick={() => setCommitModalOpen(false)}
-                className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-secondary hover:text-on-surface"
+                className="btn-secondary text-[12px] py-2 px-3.5"
               >
                 Cancel
               </button>
@@ -194,7 +196,7 @@ export const GlobalModals: React.FC = () => {
                     setCommitMessage('');
                   }
                 }}
-                className="px-4 py-1.5 rounded-lg bg-gradient-to-b from-primary to-primary-container text-on-primary text-xs font-semibold shadow-sm hover:opacity-95 disabled:opacity-50"
+                className="btn-primary text-[12px] py-2 px-3.5"
               >
                 {isOperationPending ? 'Committing...' : 'Commit Snapshot'}
               </button>
@@ -377,33 +379,36 @@ export const GlobalModals: React.FC = () => {
       )}
 
       {/* 3. Create Merge Request Modal */}
+      {/* 3. Create Merge Request Modal */}
       {isCreateMrModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl border border-outline-variant/30 w-full max-w-lg overflow-hidden">
-            <div className="px-5 py-4 border-b border-surface-container flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary">merge</span>
-                <h3 className="font-headline text-title-md text-on-surface">
+        <div className="fixed inset-0 z-50 bg-[#10172a]/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-xl shadow-[0_20px_40px_rgba(16,23,42,0.15)] border border-[#e2e5f6] w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-[#f1f3fb] flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-[#eff4ff] flex items-center justify-center text-[#2563eb]">
+                  <span className="material-symbols-outlined text-[18px]">merge</span>
+                </div>
+                <h3 className="text-[15px] font-semibold text-[#10172a]">
                   Open Merge Request
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setCreateMrModalOpen(false)}
-                className="text-secondary hover:text-on-surface"
+                className="text-[#8890b8] hover:text-[#10172a] rounded-lg p-1 transition-colors"
               >
-                <span className="material-symbols-outlined text-lg">close</span>
+                <span className="material-symbols-outlined text-[18px]">close</span>
               </button>
             </div>
-            <div className="p-5 space-y-4">
+            <div className="p-6 space-y-4">
               {mrModalError && (
-                <div className="p-3 rounded-lg bg-error-container/30 border border-error/30 font-body-sm text-xs text-error">
+                <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-[12px] text-red-700">
                   {mrModalError}
                 </div>
               )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-label-mono text-label-sm uppercase text-secondary mb-1">
+                  <label className="block text-[12px] font-semibold text-[#10172a] mb-1">
                     Source Branch
                   </label>
                   <input
@@ -411,11 +416,11 @@ export const GlobalModals: React.FC = () => {
                     value={mrSourceBranch || activeBranch}
                     onChange={(e) => setMrSourceBranch(e.target.value)}
                     placeholder="Source branch"
-                    className="w-full rounded-lg border border-outline-variant/40 bg-surface-container-lowest px-3 py-2 font-code-sm text-xs"
+                    className="vdb-input w-full font-mono text-[12px]"
                   />
                 </div>
                 <div>
-                  <label className="block font-label-mono text-label-sm uppercase text-secondary mb-1">
+                  <label className="block text-[12px] font-semibold text-[#10172a] mb-1">
                     Target Branch
                   </label>
                   <input
@@ -423,12 +428,12 @@ export const GlobalModals: React.FC = () => {
                     value={mrTargetBranch}
                     onChange={(e) => setMrTargetBranch(e.target.value)}
                     placeholder="Target branch (e.g., main)"
-                    className="w-full rounded-lg border border-outline-variant/40 bg-surface-container-lowest px-3 py-2 font-code-sm text-xs"
+                    className="vdb-input w-full font-mono text-[12px]"
                   />
                 </div>
               </div>
               <div>
-                <label className="block font-label-mono text-label-sm uppercase text-secondary mb-1">
+                <label className="block text-[12px] font-semibold text-[#10172a] mb-1">
                   Merge Request Title
                 </label>
                 <input
@@ -436,11 +441,11 @@ export const GlobalModals: React.FC = () => {
                   value={mrTitle}
                   onChange={(e) => setMrTitle(e.target.value)}
                   placeholder="Summarize the schema and data migration..."
-                  className="w-full rounded-lg border border-outline-variant/40 bg-surface-container-lowest px-3 py-2 font-body-sm text-xs"
+                  className="vdb-input w-full text-[12px]"
                 />
               </div>
               <div>
-                <label className="block font-label-mono text-label-sm uppercase text-secondary mb-1">
+                <label className="block text-[12px] font-semibold text-[#10172a] mb-1">
                   Migration Summary & Rollback Plan
                 </label>
                 <textarea
@@ -448,15 +453,15 @@ export const GlobalModals: React.FC = () => {
                   value={mrDescription}
                   onChange={(e) => setMrDescription(e.target.value)}
                   placeholder="Document impact and rollback considerations..."
-                  className="w-full rounded-lg border border-outline-variant/40 bg-surface-container-lowest px-3 py-2 font-body-sm text-xs"
+                  className="vdb-input w-full text-[12px]"
                 />
               </div>
             </div>
-            <div className="px-5 py-3 bg-surface-container-low border-t border-surface-container flex items-center justify-end gap-2">
+            <div className="px-6 py-3.5 bg-[#fbfbfe] border-t border-[#f1f3fb] flex items-center justify-end gap-2.5">
               <button
                 type="button"
                 onClick={() => setCreateMrModalOpen(false)}
-                className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-secondary hover:text-on-surface"
+                className="btn-secondary text-[12px] py-2 px-3.5"
               >
                 Cancel
               </button>
@@ -478,14 +483,15 @@ export const GlobalModals: React.FC = () => {
                     setMrDescription('');
                   }
                 }}
-                className="px-4 py-1.5 rounded-lg bg-gradient-to-b from-primary to-primary-container text-on-primary text-xs font-semibold shadow-sm hover:opacity-95 disabled:opacity-50"
+                className="btn-primary text-[12px] py-2 px-3.5"
               >
-                {isOperationPending ? 'Submitting...' : 'Submit Merge Request'}
+                {isOperationPending ? 'Opening MR...' : 'Submit Merge Request'}
               </button>
             </div>
           </div>
         </div>
       )}
+
 
       {/* 4. Register Repository Modal */}
       {isCreateRepoModalOpen && (

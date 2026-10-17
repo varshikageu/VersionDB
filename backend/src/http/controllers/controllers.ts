@@ -61,6 +61,10 @@ export function createControllers(c: Container) {
           undefined;
         res.json(await repositories.deleteBranch(actorOf(req), repoId, branchName, { activeBranch }));
       }),
+      delete: asyncHandler(async (req: Request, res: Response) => {
+        const { repoId } = parse(s.repoParams, req.params);
+        res.json(await repositories.delete(actorOf(req), repoId));
+      }),
     },
 
     members: {

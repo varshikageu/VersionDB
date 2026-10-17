@@ -43,37 +43,37 @@ export const CommitsHistoryScreen: React.FC = () => {
   const totalStaged = stagedRowMutations.length + stagedDdlChanges.length;
 
   return (
-    <div className="flex flex-col w-full pb-12 pt-2 space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="vdb-page">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="font-label-mono text-label-sm uppercase text-primary mb-1">
+          <div className="text-[11px] font-mono text-[#2563eb] font-semibold uppercase tracking-wider mb-1">
             Immutable Snapshot Ledger
           </div>
-          <h1 className="font-headline text-headline-lg text-on-surface">
+          <h1 className="text-[22px] font-bold text-[#10172a] tracking-tight">
             Commits & Snapshot History
           </h1>
-          <p className="font-body-sm text-body-sm text-secondary mt-0.5">
-            Inspect versioned database commits, affected tables, and DDL/DML changes across
-            branches.
+          <p className="text-[13px] text-[#5263a0] mt-0.5">
+            Inspect versioned database commits, affected tables, and DDL/DML changes across branches.
           </p>
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           {totalStaged > 0 && (
             <button
               type="button"
               onClick={() => setCommitModalOpen(true)}
-              className="px-3.5 py-2 bg-gradient-to-b from-primary to-primary-container text-on-primary rounded-lg font-body-sm text-body-sm font-semibold shadow-sm hover:opacity-95 flex items-center gap-1.5"
+              className="btn-primary"
             >
-              <span className="material-symbols-outlined text-sm">commit</span>
+              <span className="material-symbols-outlined text-[15px]">commit</span>
               Commit Staged ({totalStaged})
             </button>
           )}
           <button
             type="button"
             onClick={() => navigateTo('time-machine')}
-            className="px-3 py-2 bg-surface-container-low hover:bg-surface-container text-on-surface rounded-lg font-body-sm text-body-sm font-medium border border-outline-variant/25 flex items-center gap-1.5"
+            className="btn-secondary"
           >
-            <span className="material-symbols-outlined text-sm text-primary">history</span>
+            <span className="material-symbols-outlined text-[15px] text-[#2563eb]">history</span>
             Time Machine
           </button>
         </div>
@@ -89,18 +89,18 @@ export const CommitsHistoryScreen: React.FC = () => {
       />
 
       {/* Filter Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-surface-container-low p-2.5 rounded-lg">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-label-mono text-label-sm uppercase text-secondary pl-1">
-            Branch Filter:
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-[#e2e5f6] p-2.5 rounded-xl shadow-[0_1px_3px_rgba(16,23,42,0.04)]">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] font-mono text-[#5263a0] uppercase tracking-wider pl-1 mr-1">
+            Branch:
           </span>
           <button
             type="button"
             onClick={() => setBranchFilter('ALL')}
-            className={`px-2.5 py-1 rounded text-xs font-code-sm transition-colors ${
+            className={`px-2.5 py-1 rounded-lg text-[12px] font-mono transition-all ${
               branchFilter === 'ALL'
-                ? 'bg-surface-container-lowest text-primary font-semibold shadow-xs'
-                : 'text-secondary hover:text-on-surface'
+                ? 'bg-[#10172a] text-white font-semibold'
+                : 'text-[#5263a0] hover:text-[#10172a] hover:bg-[#f1f3fb]'
             }`}
           >
             All Branches ({commits.length})
@@ -110,19 +110,19 @@ export const CommitsHistoryScreen: React.FC = () => {
               key={b.name}
               type="button"
               onClick={() => setBranchFilter(b.name)}
-              className={`px-2.5 py-1 rounded text-xs font-code-sm transition-colors ${
+              className={`px-2.5 py-1 rounded-lg text-[12px] font-mono transition-all ${
                 branchFilter === b.name
-                  ? 'bg-surface-container-lowest text-primary font-semibold shadow-xs'
-                  : 'text-secondary hover:text-on-surface'
+                  ? 'bg-[#10172a] text-white font-semibold'
+                  : 'text-[#5263a0] hover:text-[#10172a] hover:bg-[#f1f3fb]'
               }`}
             >
               {b.name}
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-3 pr-2">
+        <div className="flex items-center gap-3">
           <div className="relative">
-            <span className="material-symbols-outlined text-xs text-secondary absolute left-2.5 top-1/2 -translate-y-1/2">
+            <span className="material-symbols-outlined text-[15px] text-[#8890b8] absolute left-2.5 top-1/2 -translate-y-1/2">
               search
             </span>
             <input
@@ -131,11 +131,11 @@ export const CommitsHistoryScreen: React.FC = () => {
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Filter hash, table, message..."
               aria-label="Filter commits"
-              className="pl-7 pr-3 py-1 rounded-md bg-surface-container-lowest border border-outline-variant/30 font-code-sm text-xs text-on-surface focus:outline-none focus:border-primary"
+              className="pl-8 pr-3 py-1.5 rounded-lg bg-[#f8f9ff] border border-[#e2e5f6] text-[12px] text-[#10172a] placeholder-[#8890b8] focus:outline-none focus:border-[#2563eb] focus:bg-white w-56 transition-all"
             />
           </div>
-          <span className="font-code-sm text-code-sm text-secondary">
-            Active Branch: <strong className="text-on-surface">{activeBranch || 'None'}</strong>
+          <span className="text-[12px] font-mono text-[#8890b8]">
+            Active: <strong className="text-[#10172a]">{activeBranch || 'None'}</strong>
           </span>
         </div>
       </div>
@@ -167,63 +167,81 @@ export const CommitsHistoryScreen: React.FC = () => {
         />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-          <div className="lg:col-span-8 bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden border border-outline-variant/20">
-            <table className="w-full text-left border-collapse">
+          <div className="lg:col-span-8 vdb-card overflow-hidden">
+            <table className="vdb-table">
               <thead>
-                <tr className="bg-surface-container-low font-label-mono text-label-sm uppercase text-secondary border-b border-surface-container">
-                  <th className="py-3 px-4">Commit</th>
-                  <th className="py-3 px-4">Message & Branch</th>
-                  <th className="py-3 px-4">Affected Scope</th>
-                  <th className="py-3 px-4">Author</th>
+                <tr>
+                  <th>Commit</th>
+                  <th>Message & Branch</th>
+                  <th>Affected Scope</th>
+                  <th>Author</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-surface-container font-body-sm text-body-sm">
-                {filteredCommits.map((c) => (
-                  <tr
-                    key={c.hash}
-                    onClick={() => setSelectedCommit(c)}
-                    className="cursor-pointer hover:bg-surface-container-low/60"
-                  >
-                    <td className="py-3 px-4 font-code-sm text-primary font-semibold">{c.hash}</td>
-                    <td className="py-3 px-4">
-                      <div className="font-semibold text-on-surface">{c.message}</div>
-                      <div className="font-code-sm text-[11px] text-secondary">{c.branch}</div>
-                    </td>
-                    <td className="py-3 px-4 font-code-sm text-xs text-secondary">
-                      {c.affectedTable} ({c.affectedRowsLabel})
-                    </td>
-                    <td className="py-3 px-4 font-code-sm text-xs text-secondary">
-                      {c.authorHandle} • {c.timestampRelative}
-                    </td>
-                  </tr>
-                ))}
+              <tbody>
+                {filteredCommits.map((c) => {
+                  const isSelected = selectedCommit?.hash === c.hash;
+
+                  return (
+                    <tr
+                      key={c.hash}
+                      onClick={() => setSelectedCommit(c)}
+                      className={`cursor-pointer transition-colors ${
+                        isSelected ? 'bg-[#eff4ff]' : 'hover:bg-[#f8f9ff]'
+                      }`}
+                    >
+                      <td className="font-mono text-[12px] text-[#2563eb] font-semibold">{c.hash}</td>
+                      <td>
+                        <div className="text-[13px] font-medium text-[#10172a]">{c.message}</div>
+                        <div className="font-mono text-[11px] text-[#5263a0] mt-0.5">{c.branch}</div>
+                      </td>
+                      <td className="font-mono text-[12px] text-[#5263a0]">
+                        <span className="text-[#10172a] font-medium">{c.affectedTable}</span> ({c.affectedRowsLabel})
+                      </td>
+                      <td className="text-[12px] text-[#5263a0]">
+                        <span className="font-medium text-[#10172a]">{c.authorHandle}</span> • {c.timestampRelative}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
 
-          <div className="lg:col-span-4 bg-surface-container-lowest rounded-xl shadow-sm p-5 border border-outline-variant/20">
+          <div className="lg:col-span-4 vdb-card p-5">
             {selectedCommit ? (
               <div className="space-y-3">
-                <div className="font-code-sm text-xs text-primary font-bold">
-                  {selectedCommit.hash}
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-[12px] text-[#2563eb] font-bold">
+                    {selectedCommit.hash}
+                  </span>
+                  <span className="badge badge-blue">{selectedCommit.branch}</span>
                 </div>
-                <h3 className="font-headline text-title-md text-on-surface">
+                <h3 className="text-[15px] font-semibold text-[#10172a]">
                   {selectedCommit.message}
                 </h3>
-                <pre className="p-3 rounded-lg bg-surface-container-low font-code-sm text-xs text-on-surface overflow-x-auto">
-                  {selectedCommit.ddlPreview}
-                </pre>
+                <div className="text-[12px] text-[#5263a0]">
+                  Author: <span className="font-medium text-[#10172a]">{selectedCommit.authorHandle}</span> ({selectedCommit.timestampRelative})
+                </div>
+                <div className="pt-2">
+                  <span className="text-[11px] font-mono text-[#5263a0] uppercase tracking-wider block mb-1.5">
+                    DDL / Mutation Preview
+                  </span>
+                  <pre className="p-3 rounded-lg bg-[#f8f9ff] border border-[#e2e5f6] font-mono text-[11px] text-[#10172a] overflow-x-auto">
+                    {selectedCommit.ddlPreview}
+                  </pre>
+                </div>
                 <button
                   type="button"
                   onClick={() => selectBranch(selectedCommit.branch)}
-                  className="w-full py-2 rounded-lg bg-surface-container hover:bg-surface-container-high font-body-sm text-xs font-semibold text-on-surface"
+                  className="w-full btn-secondary text-[12px] py-2 mt-2"
                 >
                   Checkout {selectedCommit.branch}
                 </button>
               </div>
             ) : (
-              <div className="text-center py-8 font-body-sm text-xs text-secondary">
-                Select a commit from the table to inspect its snapshot details.
+              <div className="text-center py-12 text-[13px] text-[#5263a0]">
+                <span className="material-symbols-outlined text-[32px] text-[#8890b8] block mb-2">touch_app</span>
+                Select a commit from the table to inspect its snapshot details and DDL preview.
               </div>
             )}
           </div>

@@ -19,24 +19,26 @@ export const SchemaVersionsScreen: React.FC = () => {
   } = useVersionDb();
 
   return (
-    <div className="flex flex-col w-full pb-12 pt-2 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="vdb-page">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="font-label-mono text-label-sm uppercase text-primary mb-1">
+          <div className="text-[11px] font-mono text-[#2563eb] font-semibold uppercase tracking-wider mb-1">
             DDL Release Tagging
           </div>
-          <h1 className="font-headline text-headline-lg text-on-surface">
+          <h1 className="text-[22px] font-bold text-[#10172a] tracking-tight">
             Schema Versions & Migration Registry
           </h1>
-          <p className="font-body-sm text-body-sm text-secondary mt-0.5">
+          <p className="text-[13px] text-[#5263a0] mt-0.5">
             Track tagged schema releases, migration checksums, and schema drift status.
           </p>
         </div>
         <button
           type="button"
           onClick={() => navigateTo('commits-and-history')}
-          className="px-3.5 py-2 rounded-lg bg-surface-container-low hover:bg-surface-container text-on-surface font-body-sm text-xs font-medium border border-outline-variant/25"
+          className="btn-secondary"
         >
+          <span className="material-symbols-outlined text-[15px] text-[#2563eb]">commit</span>
           Commits History
         </button>
       </div>
@@ -61,30 +63,32 @@ export const SchemaVersionsScreen: React.FC = () => {
           onAction={() => navigateTo('commits-and-history')}
         />
       ) : (
-        <div className="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden border border-outline-variant/20">
-          <table className="w-full text-left border-collapse">
+        <div className="vdb-card overflow-hidden">
+          <table className="vdb-table">
             <thead>
-              <tr className="bg-surface-container-low font-label-mono text-label-sm uppercase text-secondary border-b border-surface-container">
-                <th className="py-3 px-4">Version</th>
-                <th className="py-3 px-4">Commit</th>
-                <th className="py-3 px-4">Summary</th>
-                <th className="py-3 px-4">Applied At</th>
-                <th className="py-3 px-4">Status</th>
+              <tr>
+                <th>Version</th>
+                <th>Commit</th>
+                <th>Summary</th>
+                <th>Applied At</th>
+                <th>Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-surface-container font-body-sm text-body-sm">
+            <tbody>
               {schemaVersions.map((sv) => (
-                <tr key={sv.version}>
-                  <td className="py-3.5 px-4 font-code-sm font-bold text-primary">{sv.version}</td>
-                  <td className="py-3.5 px-4 font-code-sm text-xs text-on-surface">
+                <tr key={sv.version} className="hover:bg-[#f8f9ff]">
+                  <td className="font-mono font-bold text-[#2563eb] text-[13px]">{sv.version}</td>
+                  <td className="font-mono text-[12px] text-[#10172a] font-medium">
                     {sv.commitHash}
                   </td>
-                  <td className="py-3.5 px-4 text-xs text-on-surface">{sv.ddlSummary}</td>
-                  <td className="py-3.5 px-4 font-code-sm text-xs text-secondary">
+                  <td className="text-[12px] text-[#10172a]">{sv.ddlSummary}</td>
+                  <td className="font-mono text-[12px] text-[#5263a0]">
                     {sv.appliedAtUtc}
                   </td>
-                  <td className="py-3.5 px-4 font-label-mono text-[10px] uppercase text-secondary">
-                    {sv.status}
+                  <td>
+                    <span className="badge badge-emerald">
+                      {sv.status}
+                    </span>
                   </td>
                 </tr>
               ))}

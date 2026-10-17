@@ -29,25 +29,26 @@ export const ConflictResolutionScreen: React.FC = () => {
     conflicts.find((c) => c.id === selectedConflictId) || conflicts[0] || null;
 
   return (
-    <div className="flex flex-col w-full pb-12 pt-2 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="vdb-page">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="font-label-mono text-label-sm uppercase text-primary mb-1">
+          <div className="text-[11px] font-mono text-[#2563eb] font-semibold uppercase tracking-wider mb-1">
             3-Way Schema & Primary-Key Collision Resolution
           </div>
-          <h1 className="font-headline text-headline-lg text-on-surface">
+          <h1 className="text-[22px] font-bold text-[#10172a] tracking-tight">
             Conflict Resolution Workspace
           </h1>
-          <p className="font-body-sm text-body-sm text-secondary mt-0.5">
-            Inspect conflicting record or schema mutations between branches and submit a resolution
-            to the backend.
+          <p className="text-[13px] text-[#5263a0] mt-0.5">
+            Inspect conflicting record or schema mutations between branches and submit a resolution to the backend.
           </p>
         </div>
         <button
           type="button"
           onClick={() => navigateTo('merge-requests')}
-          className="px-3.5 py-2 rounded-lg bg-surface-container-low hover:bg-surface-container text-on-surface font-body-sm text-xs font-medium border border-outline-variant/25"
+          className="btn-secondary"
         >
+          <span className="material-symbols-outlined text-[15px] text-[#2563eb]">merge</span>
           View Merge Requests
         </button>
       </div>
@@ -72,99 +73,127 @@ export const ConflictResolutionScreen: React.FC = () => {
           onAction={() => navigateTo('merge-requests')}
         />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-4 space-y-2">
-            {conflicts.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => setSelectedConflictId(c.id)}
-                className={`w-full text-left p-4 rounded-xl border transition-colors ${
-                  activeConflict.id === c.id
-                    ? 'bg-surface-container-lowest border-primary'
-                    : 'bg-surface-container-lowest border-outline-variant/25'
-                }`}
-              >
-                <div className="font-code-sm text-xs font-bold text-on-surface">
-                  {c.table} ({c.primaryKeyField}={c.primaryKeyValue})
-                </div>
-                <div className="font-code-sm text-[11px] text-secondary mt-0.5">
-                  MR #{c.mrNumber} • {c.sourceBranch} → {c.targetBranch}
-                </div>
-              </button>
-            ))}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+          <div className="lg:col-span-4 space-y-2.5">
+            {conflicts.map((c) => {
+              const isSelected = activeConflict.id === c.id;
+
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setSelectedConflictId(c.id)}
+                  className={`w-full text-left p-4 rounded-xl border transition-all ${
+                    isSelected
+                      ? 'bg-white border-[#2563eb] shadow-[0_2px_8px_rgba(37,99,235,0.08)] ring-1 ring-[#2563eb]'
+                      : 'bg-white border-[#e2e5f6] hover:border-[#b3c5ff] hover:bg-[#fbfbfe]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-mono text-[12px] font-bold text-[#10172a]">
+                      {c.table}
+                    </span>
+                    <span className={`badge ${c.resolved ? 'badge-emerald' : 'badge-red'}`}>
+                      {c.resolved ? 'Resolved' : 'Conflict'}
+                    </span>
+                  </div>
+                  <div className="font-mono text-[11px] text-[#5263a0]">
+                    PK: {c.primaryKeyField}={c.primaryKeyValue}
+                  </div>
+                  <div className="font-mono text-[11px] text-[#8890b8] mt-1">
+                    MR #{c.mrNumber} • {c.sourceBranch} → {c.targetBranch}
+                  </div>
+                </button>
+              );
+            })}
           </div>
 
-          <div className="lg:col-span-8 bg-surface-container-lowest rounded-xl border border-outline-variant/25 p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="font-headline text-title-md text-on-surface">
-                {activeConflict.table} — {activeConflict.recordContextLabel}
-              </h2>
-              <span className="font-code-sm text-xs text-secondary">
-                {activeConflict.resolved ? 'Resolved' : 'Unresolved'}
-              </span>
-            </div>
-
-            <div className="space-y-2">
-              {activeConflict.fields.map((f) => (
-                <div
-                  key={f.field}
-                  className="p-3 rounded-lg bg-surface-container-low border border-outline-variant/20 grid grid-cols-3 gap-2 font-code-sm text-xs"
-                >
-                  <span className="font-semibold text-on-surface">{f.field}</span>
-                  <span className="text-primary">OURS: {f.oursValue}</span>
-                  <span className="text-error">THEIRS: {f.theirsValue}</span>
+          <div className="lg:col-span-8">
+            <div className="vdb-card p-6 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-[#f1f3fb]">
+                <div>
+                  <span className="text-[11px] font-mono text-[#5263a0] uppercase tracking-wider">
+                    Collision Context
+                  </span>
+                  <h2 className="text-[17px] font-bold text-[#10172a] mt-0.5">
+                    {activeConflict.table} — {activeConflict.recordContextLabel}
+                  </h2>
                 </div>
-              ))}
-            </div>
+                <span className={`badge ${activeConflict.resolved ? 'badge-emerald' : 'badge-red'}`}>
+                  {activeConflict.resolved ? 'Resolved' : 'Unresolved'}
+                </span>
+              </div>
 
-            <div>
-              <label className="block font-label-mono text-label-sm uppercase text-secondary mb-1">
-                Resolution Audit Justification
-              </label>
-              <input
-                type="text"
-                value={auditNote}
-                onChange={(e) => setAuditNote(e.target.value)}
-                placeholder="Document resolution reason for audit log..."
-                className="w-full rounded-lg border border-outline-variant/40 bg-surface-container-lowest px-3 py-2 font-body-sm text-xs"
-              />
-            </div>
+              <div className="space-y-2">
+                <span className="text-[11px] font-mono text-[#5263a0] uppercase tracking-wider block">
+                  Field Values Comparison
+                </span>
+                {activeConflict.fields.map((f) => (
+                  <div
+                    key={f.field}
+                    className="p-3 rounded-lg bg-[#f8f9ff] border border-[#e2e5f6] grid grid-cols-3 gap-3 font-mono text-[12px] items-center"
+                  >
+                    <span className="font-semibold text-[#10172a]">{f.field}</span>
+                    <div className="p-1.5 rounded bg-blue-50/70 border border-blue-100 text-[#2563eb]">
+                      <span className="text-[10px] uppercase font-bold block opacity-70">Target (OURS)</span>
+                      {f.oursValue}
+                    </div>
+                    <div className="p-1.5 rounded bg-red-50/70 border border-red-100 text-red-600">
+                      <span className="text-[10px] uppercase font-bold block opacity-70">Incoming (THEIRS)</span>
+                      {f.theirsValue}
+                    </div>
+                  </div>
+                ))}
+              </div>
 
-            <div className="flex flex-wrap items-center gap-2 pt-2">
-              <button
-                type="button"
-                disabled={isOperationPending}
-                onClick={() =>
-                  void resolveConflictItem(activeConflict.id, 'OURS', undefined, auditNote)
-                }
-                className="px-3.5 py-2 rounded-lg bg-primary text-white font-body-sm text-xs font-semibold disabled:opacity-50"
-              >
-                Keep Target (OURS)
-              </button>
-              <button
-                type="button"
-                disabled={isOperationPending}
-                onClick={() =>
-                  void resolveConflictItem(activeConflict.id, 'THEIRS', undefined, auditNote)
-                }
-                className="px-3.5 py-2 rounded-lg bg-surface-container-low hover:bg-surface-container text-on-surface font-body-sm text-xs font-semibold border border-outline-variant/30 disabled:opacity-50"
-              >
-                Accept Incoming (THEIRS)
-              </button>
-              <button
-                type="button"
-                disabled={isOperationPending}
-                onClick={() =>
-                  void escalateConflictToAdmin(
-                    activeConflict.id,
-                    auditNote || 'Escalated for Lead DBA review'
-                  )
-                }
-                className="px-3.5 py-2 rounded-lg bg-error/10 text-error font-body-sm text-xs font-semibold disabled:opacity-50"
-              >
-                Escalate to Lead DBA
-              </button>
+              <div>
+                <label className="block text-[12px] font-semibold text-[#10172a] mb-1.5">
+                  Resolution Audit Justification
+                </label>
+                <input
+                  type="text"
+                  value={auditNote}
+                  onChange={(e) => setAuditNote(e.target.value)}
+                  placeholder="Document resolution reason for audit log..."
+                  className="vdb-input w-full text-[12px]"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2.5 pt-3 border-t border-[#f1f3fb]">
+                <button
+                  type="button"
+                  disabled={isOperationPending}
+                  onClick={() =>
+                    void resolveConflictItem(activeConflict.id, 'OURS', undefined, auditNote)
+                  }
+                  className="btn-primary text-[12px] py-1.5"
+                >
+                  Keep Target (OURS)
+                </button>
+                <button
+                  type="button"
+                  disabled={isOperationPending}
+                  onClick={() =>
+                    void resolveConflictItem(activeConflict.id, 'THEIRS', undefined, auditNote)
+                  }
+                  className="btn-secondary text-[12px] py-1.5"
+                >
+                  Accept Incoming (THEIRS)
+                </button>
+                <button
+                  type="button"
+                  disabled={isOperationPending}
+                  onClick={() =>
+                    void escalateConflictToAdmin(
+                      activeConflict.id,
+                      auditNote || 'Escalated for Lead DBA review'
+                    )
+                  }
+                  className="btn-secondary text-[12px] py-1.5 text-red-600 hover:bg-red-50 hover:border-red-200"
+                >
+                  Escalate to Lead DBA
+                </button>
+              </div>
             </div>
           </div>
         </div>

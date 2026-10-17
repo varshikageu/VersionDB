@@ -23,24 +23,26 @@ export const DataLineageScreen: React.FC = () => {
     lineageNodes.find((n) => n.id === selectedNodeId) || lineageNodes[0] || null;
 
   return (
-    <div className="flex flex-col w-full pb-12 pt-2 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="vdb-page">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="font-label-mono text-label-sm uppercase text-primary mb-1">
+          <div className="text-[11px] font-mono text-[#2563eb] font-semibold uppercase tracking-wider mb-1">
             Catalog Dependency Graph
           </div>
-          <h1 className="font-headline text-headline-lg text-on-surface">
+          <h1 className="text-[22px] font-bold text-[#10172a] tracking-tight">
             Data Lineage & Downstream Impact
           </h1>
-          <p className="font-body-sm text-body-sm text-secondary mt-0.5">
+          <p className="text-[13px] text-[#5263a0] mt-0.5">
             Inspect upstream and downstream table, view, and replica dependencies.
           </p>
         </div>
         <button
           type="button"
           onClick={() => navigateTo('schema-explorer')}
-          className="px-3.5 py-2 rounded-lg bg-surface-container-low hover:bg-surface-container text-on-surface font-body-sm text-xs font-medium border border-outline-variant/25"
+          className="btn-secondary"
         >
+          <span className="material-symbols-outlined text-[15px] text-[#2563eb]">schema</span>
           Schema Explorer
         </button>
       </div>
@@ -66,30 +68,34 @@ export const DataLineageScreen: React.FC = () => {
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {lineageNodes.map((node) => (
-            <button
-              key={node.id}
-              type="button"
-              onClick={() => setSelectedNodeId(node.id)}
-              className={`text-left p-5 rounded-xl border ${
-                activeNode?.id === node.id
-                  ? 'bg-surface-container-lowest border-primary'
-                  : 'bg-surface-container-lowest border-outline-variant/25'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-code-sm text-xs font-bold text-on-surface">
-                  {node.schema}.{node.name}
-                </span>
-                <span className="font-label-mono text-[10px] uppercase text-secondary">
-                  {node.type}
-                </span>
-              </div>
-              <div className="font-code-sm text-[11px] text-secondary mt-2">
-                Upstream: {node.upstreamIds.length} • Downstream: {node.downstreamIds.length}
-              </div>
-            </button>
-          ))}
+          {lineageNodes.map((node) => {
+            const isSelected = activeNode?.id === node.id;
+
+            return (
+              <button
+                key={node.id}
+                type="button"
+                onClick={() => setSelectedNodeId(node.id)}
+                className={`text-left p-5 rounded-xl border transition-all ${
+                  isSelected
+                    ? 'bg-white border-[#2563eb] shadow-[0_2px_8px_rgba(37,99,235,0.08)] ring-1 ring-[#2563eb]'
+                    : 'bg-white border-[#e2e5f6] hover:border-[#b3c5ff] hover:bg-[#fbfbfe]'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-mono text-[13px] font-bold text-[#10172a]">
+                    {node.schema}.{node.name}
+                  </span>
+                  <span className="badge badge-neutral">
+                    {node.type}
+                  </span>
+                </div>
+                <div className="font-mono text-[11px] text-[#5263a0]">
+                  Upstream: <span className="font-semibold text-[#10172a]">{node.upstreamIds.length}</span> • Downstream: <span className="font-semibold text-[#10172a]">{node.downstreamIds.length}</span>
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

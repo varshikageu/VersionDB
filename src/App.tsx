@@ -48,10 +48,10 @@ const VersionDbShell: React.FC = () => {
 
   if (authState.isInitialLoading) {
     return (
-      <div className="min-h-screen bg-background text-on-surface flex flex-col justify-center items-center p-8">
+      <div className="min-h-screen bg-[#f5f6ff] text-[#10172a] flex flex-col justify-center items-center p-8">
         <div className="w-full max-w-4xl space-y-4">
-          <div className="flex items-center gap-2 font-code-sm text-code-sm text-secondary">
-            <span className="material-symbols-outlined text-primary text-base animate-spin">
+          <div className="flex items-center gap-2 text-[12px] text-[#5263a0] font-mono">
+            <span className="material-symbols-outlined text-[#2563eb] text-base animate-spin">
               sync
             </span>
             <span>Checking VersionDB backend session...</span>
@@ -156,11 +156,11 @@ const VersionDbShell: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background font-body-md text-on-surface antialiased">
+    <div className="min-h-screen bg-[#f5f6ff] antialiased">
       <TopHeader />
       <Sidebar />
-      <div className="pl-64">
-        <main className="w-full pt-18 pb-14 px-6 lg:px-8 max-w-[1600px] min-h-screen bg-background">
+      <div className="pl-60">
+        <main className="w-full pt-[4.5rem] pb-14 px-6 lg:px-8 max-w-[1600px] min-h-screen">
           {renderScreen()}
         </main>
       </div>

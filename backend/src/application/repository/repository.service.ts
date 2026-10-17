@@ -165,4 +165,41 @@ export class RepositoryService {
       throw e;
     }
   }
+
+  /**
+   * Deletes a repository.
+   * Requires owner role on the repository or platform admin.
+   * Logs repository deletion to the audit trail (linked with repoId=null/entityId=repoId to preserve audit history),
+   * then removes the repository row (which cascades to branches, members, etc.).
+   */
+  async delete(actor: Actor, repoId: string): Promise<{ deleted: boolean; repoId: string; name: string }> {
+    const { repo } = await this.members.authorize(actor, repoId, 'repo:delete');
+
+    return await this.uow.transaction(async (repos) => {
+      await repos.repositories.lockForUpdate(repoId);
+
+      // Audit log the deletion before removing the repository.
+      // repoId: null ensures this entry is logged to the global immutable audit chain
+      // so it survives the deletion of the repository itself and never violates FK constraints.
+      await this.audit.log(repos, {
+        repoId: null,
+        actorId: actor.userId,
+        action: 'repository.delete',
+        entityType: 'repository',
+        entityId: repo.id,
+        metadata: {
+          name: repo.name,
+          deletedBy: actor.userId,
+        },
+        ip: actor.ip,
+      });
+
+      const deleted = await repos.repositories.delete(repoId);
+      if (!deleted) {
+        throw notFound('Repository');
+      }
+
+      return { deleted: true, repoId: repo.id, name: repo.name };
+    });
+  }
 }

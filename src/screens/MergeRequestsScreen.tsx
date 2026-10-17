@@ -41,23 +41,24 @@ export const MergeRequestsScreen: React.FC = () => {
     filteredMrs.find((m) => m.number === selectedMrNumber) || filteredMrs[0] || null;
 
   return (
-    <div className="flex flex-col w-full pb-12 pt-2 space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="vdb-page">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="font-label-mono text-label-sm uppercase text-primary mb-1">
+          <div className="text-[11px] font-mono text-[#2563eb] font-semibold uppercase tracking-wider mb-1">
             Schema & Record Merge Pipeline
           </div>
-          <h1 className="font-headline text-headline-lg text-on-surface">Merge Requests</h1>
-          <p className="font-body-sm text-body-sm text-secondary mt-0.5">
+          <h1 className="text-[22px] font-bold text-[#10172a] tracking-tight">Merge Requests</h1>
+          <p className="text-[13px] text-[#5263a0] mt-0.5">
             Review branch diffs, verify conflict resolution, and execute protected database merges.
           </p>
         </div>
         <button
           type="button"
           onClick={() => setCreateMrModalOpen(true)}
-          className="px-4 py-2 bg-gradient-to-b from-primary to-primary-container text-on-primary rounded-lg font-body-sm text-body-sm font-semibold shadow-sm hover:opacity-95 flex items-center gap-2"
+          className="btn-primary"
         >
-          <span className="material-symbols-outlined text-sm">merge</span>
+          <span className="material-symbols-outlined text-[15px]">merge</span>
           New Merge Request
         </button>
       </div>
@@ -71,7 +72,8 @@ export const MergeRequestsScreen: React.FC = () => {
         isLoading={isCatalogLoading}
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-surface-container-low p-2.5 rounded-lg">
+      {/* Filter Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-[#e2e5f6] p-2.5 rounded-xl shadow-[0_1px_3px_rgba(16,23,42,0.04)]">
         <div className="flex flex-wrap items-center gap-1.5">
           {(['ALL', 'OPEN', 'CONFLICT', 'NEEDS_ADMIN', 'READY', 'MERGED'] as const).map(
             (status) => (
@@ -79,10 +81,10 @@ export const MergeRequestsScreen: React.FC = () => {
                 key={status}
                 type="button"
                 onClick={() => setStatusFilter(status)}
-                className={`px-2.5 py-1 rounded text-xs font-code-sm transition-colors ${
+                className={`px-2.5 py-1 rounded-lg text-[12px] font-mono transition-all ${
                   statusFilter === status
-                    ? 'bg-surface-container-lowest text-primary font-semibold shadow-xs'
-                    : 'text-secondary hover:text-on-surface'
+                    ? 'bg-[#10172a] text-white font-semibold'
+                    : 'text-[#5263a0] hover:text-[#10172a] hover:bg-[#f1f3fb]'
                 }`}
               >
                 {status}
@@ -90,13 +92,18 @@ export const MergeRequestsScreen: React.FC = () => {
             )
           )}
         </div>
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search Merge Requests..."
-          className="px-3 py-1 rounded-md bg-surface-container-lowest border border-outline-variant/30 font-body-sm text-xs text-on-surface"
-        />
+        <div className="relative">
+          <span className="material-symbols-outlined text-[15px] text-[#8890b8] absolute left-2.5 top-1/2 -translate-y-1/2">
+            search
+          </span>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search MRs..."
+            className="pl-8 pr-3 py-1.5 rounded-lg bg-[#f8f9ff] border border-[#e2e5f6] text-[12px] text-[#10172a] placeholder-[#8890b8] focus:outline-none focus:border-[#2563eb] focus:bg-white w-52 transition-all"
+          />
+        </div>
       </div>
 
       {isCatalogLoading ? (
@@ -125,51 +132,83 @@ export const MergeRequestsScreen: React.FC = () => {
           }}
         />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
           <div className="lg:col-span-5 space-y-2.5">
-            {filteredMrs.map((mr) => (
-              <button
-                key={mr.id}
-                type="button"
-                onClick={() => setSelectedMrNumber(mr.number)}
-                className={`w-full text-left p-4 rounded-xl border transition-all ${
-                  activeMr?.number === mr.number
-                    ? 'bg-surface-container-lowest border-primary'
-                    : 'bg-surface-container-lowest border-outline-variant/25'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-code-sm text-xs font-bold text-primary">#{mr.number}</span>
-                  <span className="font-label-mono text-[10px] uppercase text-secondary">
-                    {mr.status}
-                  </span>
-                </div>
-                <div className="font-headline text-body-md font-semibold text-on-surface mt-1">
-                  {mr.title}
-                </div>
-                <div className="font-code-sm text-[11px] text-secondary mt-1">
-                  {mr.sourceBranch} → {mr.targetBranch}
-                </div>
-              </button>
-            ))}
+            {filteredMrs.map((mr) => {
+              const isSelected = activeMr?.number === mr.number;
+
+              return (
+                <button
+                  key={mr.id}
+                  type="button"
+                  onClick={() => setSelectedMrNumber(mr.number)}
+                  className={`w-full text-left p-4 rounded-xl border transition-all ${
+                    isSelected
+                      ? 'bg-white border-[#2563eb] shadow-[0_2px_8px_rgba(37,99,235,0.08)] ring-1 ring-[#2563eb]'
+                      : 'bg-white border-[#e2e5f6] hover:border-[#b3c5ff] hover:bg-[#fbfbfe]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-mono text-[12px] font-bold text-[#2563eb]">#{mr.number}</span>
+                    <span className={`badge ${
+                      mr.status === 'MERGED'
+                        ? 'badge-emerald'
+                        : mr.status === 'CONFLICT'
+                        ? 'badge-red'
+                        : mr.status === 'READY'
+                        ? 'badge-blue'
+                        : 'badge-amber'
+                    }`}>
+                      {mr.status}
+                    </span>
+                  </div>
+                  <div className="text-[13px] font-semibold text-[#10172a] line-clamp-1">
+                    {mr.title}
+                  </div>
+                  <div className="font-mono text-[11px] text-[#5263a0] mt-1.5 flex items-center gap-1.5">
+                    <span>{mr.sourceBranch}</span>
+                    <span className="material-symbols-outlined text-[13px] text-[#8890b8]">arrow_forward</span>
+                    <span>{mr.targetBranch}</span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
 
           <div className="lg:col-span-7">
             {activeMr && (
-              <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/25 p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="font-headline text-title-lg text-on-surface">
-                    #{activeMr.number} — {activeMr.title}
-                  </h2>
-                  <span className="font-code-sm text-xs text-secondary">{activeMr.status}</span>
+              <div className="vdb-card p-6 space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-[#f1f3fb]">
+                  <div>
+                    <span className="font-mono text-[12px] text-[#2563eb] font-bold">MR #{activeMr.number}</span>
+                    <h2 className="text-[17px] font-bold text-[#10172a] mt-0.5">
+                      {activeMr.title}
+                    </h2>
+                  </div>
+                  <span className={`badge ${
+                    activeMr.status === 'MERGED'
+                      ? 'badge-emerald'
+                      : activeMr.status === 'CONFLICT'
+                      ? 'badge-red'
+                      : activeMr.status === 'READY'
+                      ? 'badge-blue'
+                      : 'badge-amber'
+                  }`}>
+                    {activeMr.status}
+                  </span>
                 </div>
-                <p className="font-body-sm text-xs text-secondary">{activeMr.description}</p>
-                <div className="flex flex-wrap items-center gap-2 pt-2">
+                <div className="font-mono text-[12px] text-[#5263a0] flex items-center gap-2 p-2.5 rounded-lg bg-[#f8f9ff] border border-[#e2e5f6]">
+                  <span className="text-[#10172a] font-medium">{activeMr.sourceBranch}</span>
+                  <span className="material-symbols-outlined text-[14px] text-[#8890b8]">arrow_forward</span>
+                  <span className="text-[#10172a] font-medium">{activeMr.targetBranch}</span>
+                </div>
+                <p className="text-[13px] text-[#5263a0] leading-relaxed">{activeMr.description}</p>
+                <div className="flex flex-wrap items-center gap-2.5 pt-3 border-t border-[#f1f3fb]">
                   <button
                     type="button"
                     disabled={isOperationPending}
                     onClick={() => void approveMergeRequest(activeMr.number)}
-                    className="px-3.5 py-2 rounded-lg bg-surface-container-low hover:bg-surface-container text-on-surface font-body-sm text-xs font-semibold border border-outline-variant/30 disabled:opacity-50"
+                    className="btn-secondary text-[12px] py-1.5"
                   >
                     Approve Merge Request
                   </button>
@@ -177,14 +216,14 @@ export const MergeRequestsScreen: React.FC = () => {
                     type="button"
                     disabled={isOperationPending}
                     onClick={() => void executeMerge(activeMr.number)}
-                    className="px-4 py-2 rounded-lg bg-gradient-to-b from-primary to-primary-container text-on-primary font-body-sm text-xs font-semibold disabled:opacity-50"
+                    className="btn-primary text-[12px] py-1.5"
                   >
                     Execute Merge
                   </button>
                   <button
                     type="button"
                     onClick={() => navigateTo('changes-and-diff')}
-                    className="px-3.5 py-2 rounded-lg bg-surface-container-low hover:bg-surface-container text-secondary font-body-sm text-xs font-medium"
+                    className="btn-secondary text-[12px] py-1.5"
                   >
                     Inspect Diff
                   </button>

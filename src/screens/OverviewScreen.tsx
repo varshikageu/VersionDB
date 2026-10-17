@@ -33,38 +33,37 @@ export const OverviewScreen: React.FC = () => {
   const stagedCount = stagedRowMutations.length + stagedDdlChanges.length;
 
   return (
-    <div className="flex flex-col w-full pb-12 pt-2 space-y-6">
+    <div className="vdb-page">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 font-code-sm text-xs text-secondary mb-1">
-            <span>{activeRepo ? activeRepo.name : 'No Repository Selected'}</span>
-            <span>/</span>
-            <span className="text-primary font-semibold">
-              {activeBranch || 'No Active Branch'}
-            </span>
+          <div className="flex items-center gap-1.5 text-[11px] font-mono text-[#5263a0] mb-1">
+            <span>{activeRepo ? activeRepo.name : 'No Repository'}</span>
+            <span className="text-[#c5c9e4]">/</span>
+            <span className="text-[#2563eb] font-semibold">{activeBranch || 'No Branch'}</span>
           </div>
-          <h1 className="font-headline text-headline-lg text-on-surface tracking-tight">
-            Database Version Control Overview
+          <h1 className="text-[22px] font-bold text-[#10172a] tracking-tight">
+            Database Overview
           </h1>
+          <p className="text-[13px] text-[#5263a0] mt-0.5">
+            Version control dashboard for {activeRepo?.name ?? 'your database'}
+          </p>
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => navigateTo('sql-workspace')}
-            className="px-3.5 py-2 rounded-lg bg-surface-container-low hover:bg-surface-container text-on-surface font-body-sm text-body-sm font-medium border border-outline-variant/25 transition-colors flex items-center gap-1.5"
+            className="btn-secondary"
           >
-            <span className="material-symbols-outlined text-sm text-primary">terminal</span>
-            Open SQL Workspace
+            <span className="material-symbols-outlined text-[15px] text-[#2563eb]">terminal</span>
+            SQL Workspace
           </button>
           <button
             type="button"
-            onClick={() =>
-              activeRepo ? setCreateBranchModalOpen(true) : setCreateRepoModalOpen(true)
-            }
-            className="px-4 py-2 rounded-lg bg-gradient-to-b from-primary to-primary-container text-on-primary font-body-sm text-body-sm font-semibold shadow-sm hover:opacity-95 transition-all flex items-center gap-1.5"
+            onClick={() => activeRepo ? setCreateBranchModalOpen(true) : setCreateRepoModalOpen(true)}
+            className="btn-primary"
           >
-            <span className="material-symbols-outlined text-sm">
+            <span className="material-symbols-outlined text-[15px]">
               {activeRepo ? 'call_split' : 'add'}
             </span>
             {activeRepo ? 'Create Branch' : 'Register Repository'}
@@ -72,7 +71,7 @@ export const OverviewScreen: React.FC = () => {
         </div>
       </div>
 
-      {/* Backend Connectivity Status Banner */}
+      {/* Backend Status Banner */}
       <BackendStatusBanner
         connectionState={backendConnectionState}
         apiBaseUrl={apiBaseUrl}
@@ -82,201 +81,171 @@ export const OverviewScreen: React.FC = () => {
         isLoading={isCatalogLoading}
       />
 
-      {/* Truthful Summary Counters */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <button
-          type="button"
-          onClick={() => navigateTo('branches')}
-          className="text-left p-5 rounded-xl bg-surface-container-lowest border border-outline-variant/20 shadow-xs hover:border-primary/40 transition-colors"
-        >
-          <div className="flex items-center justify-between text-secondary mb-2">
-            <span className="font-label-mono text-label-sm uppercase">Active Branches</span>
-            <span className="material-symbols-outlined text-base text-primary">account_tree</span>
-          </div>
-          <div className="font-headline text-2xl font-bold text-on-surface">
-            {branches.length}
-          </div>
-          <div className="font-code-sm text-[11px] text-secondary mt-1">
-            {activeRepo ? `Default: ${activeRepo.defaultBranch}` : 'No repository connected'}
-          </div>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => navigateTo('commits-and-history')}
-          className="text-left p-5 rounded-xl bg-surface-container-lowest border border-outline-variant/20 shadow-xs hover:border-primary/40 transition-colors"
-        >
-          <div className="flex items-center justify-between text-secondary mb-2">
-            <span className="font-label-mono text-label-sm uppercase">Recorded Commits</span>
-            <span className="material-symbols-outlined text-base text-primary">commit</span>
-          </div>
-          <div className="font-headline text-2xl font-bold text-on-surface">{commits.length}</div>
-          <div className="font-code-sm text-[11px] text-secondary mt-1">
-            {stagedCount > 0 ? `${stagedCount} changes staged locally` : '0 staged changes'}
-          </div>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => navigateTo('merge-requests')}
-          className="text-left p-5 rounded-xl bg-surface-container-lowest border border-outline-variant/20 shadow-xs hover:border-primary/40 transition-colors"
-        >
-          <div className="flex items-center justify-between text-secondary mb-2">
-            <span className="font-label-mono text-label-sm uppercase">Open Merge Requests</span>
-            <span className="material-symbols-outlined text-base text-primary">merge</span>
-          </div>
-          <div className="font-headline text-2xl font-bold text-on-surface">{openMrs.length}</div>
-          <div className="font-code-sm text-[11px] text-secondary mt-1">
-            {mergeRequests.length} total merge requests
-          </div>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => navigateTo('conflict-resolution')}
-          className="text-left p-5 rounded-xl bg-surface-container-lowest border border-outline-variant/20 shadow-xs hover:border-primary/40 transition-colors"
-        >
-          <div className="flex items-center justify-between text-secondary mb-2">
-            <span className="font-label-mono text-label-sm uppercase">Unresolved Conflicts</span>
-            <span
-              className={`material-symbols-outlined text-base ${
-                unresolvedConflicts.length > 0 ? 'text-error' : 'text-secondary'
-              }`}
-            >
-              warning
-            </span>
-          </div>
-          <div className="font-headline text-2xl font-bold text-on-surface">
-            {unresolvedConflicts.length}
-          </div>
-          <div className="font-code-sm text-[11px] text-secondary mt-1">
-            {unresolvedConflicts.length > 0
-              ? 'Requires 3-way resolution'
-              : 'No active schema/row conflicts'}
-          </div>
-        </button>
+      {/* Stat Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          {
+            label: 'Active Branches',
+            value: branches.length,
+            icon: 'account_tree',
+            sub: activeRepo ? `Default: ${activeRepo.defaultBranch}` : 'No repository',
+            screen: 'branches' as const,
+          },
+          {
+            label: 'Commits',
+            value: commits.length,
+            icon: 'commit',
+            sub: stagedCount > 0 ? `${stagedCount} staged locally` : '0 staged',
+            screen: 'commits-and-history' as const,
+          },
+          {
+            label: 'Open Merge Requests',
+            value: openMrs.length,
+            icon: 'merge',
+            sub: `${mergeRequests.length} total`,
+            screen: 'merge-requests' as const,
+          },
+          {
+            label: 'Conflicts',
+            value: unresolvedConflicts.length,
+            icon: 'warning',
+            sub: unresolvedConflicts.length > 0 ? 'Requires resolution' : 'No conflicts',
+            screen: 'conflict-resolution' as const,
+            alert: unresolvedConflicts.length > 0,
+          },
+        ].map((card) => (
+          <button
+            key={card.label}
+            type="button"
+            onClick={() => navigateTo(card.screen)}
+            className="vdb-card p-5 text-left hover:border-[#b3c5ff] hover:shadow-[0_2px_8px_rgba(37,99,235,0.08)] transition-all group"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[11px] font-semibold text-[#5263a0] uppercase tracking-wider">
+                {card.label}
+              </span>
+              <span className={`material-symbols-outlined text-[18px] ${card.alert ? 'text-red-500' : 'text-[#8890b8] group-hover:text-[#2563eb]'} transition-colors`}>
+                {card.icon}
+              </span>
+            </div>
+            <div className="text-[28px] font-bold text-[#10172a] leading-none">
+              {card.value}
+            </div>
+            <div className="text-[11px] font-mono text-[#8890b8] mt-1.5">{card.sub}</div>
+          </button>
+        ))}
       </div>
 
-      {/* Main Content Area */}
+      {/* Main Content */}
       {isCatalogLoading ? (
         <TableSkeletonLoader rows={5} columns={5} />
       ) : !activeRepo && commits.length === 0 ? (
         <EmptyStateCard
           icon="database"
-          title="No Operational Database Repository Connected"
-          description="VersionDB does not display fabricated commits, fake replica telemetry, or placeholder charts. Connect a live VersionDB backend via VITE_API_BASE_URL and register a PostgreSQL repository to view real commit timelines, branch diffs, and database health."
+          title="No Database Repository Connected"
+          description="VersionDB does not display fabricated commits or placeholder charts. Connect a live VersionDB backend via VITE_API_BASE_URL and register a PostgreSQL repository to view real commit timelines, branch diffs, and database health."
           actionLabel="Register Repository"
           onAction={() => setCreateRepoModalOpen(true)}
-          secondaryActionLabel="View Onboarding Checklist"
+          secondaryActionLabel="View Onboarding"
           onSecondaryAction={() => navigateTo('onboarding')}
         />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Recent Commits Table */}
-          <div className="lg:col-span-8 bg-surface-container-lowest rounded-xl border border-outline-variant/20 shadow-xs overflow-hidden">
-            <div className="px-5 py-4 border-b border-surface-container flex items-center justify-between">
-              <h2 className="font-headline text-title-md text-on-surface">Recent Commits</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+          {/* Recent Commits */}
+          <div className="lg:col-span-8 vdb-card overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-[#f1f3fb] flex items-center justify-between">
+              <h2 className="text-[14px] font-semibold text-[#10172a]">Recent Commits</h2>
               <button
                 type="button"
                 onClick={() => navigateTo('commits-and-history')}
-                className="font-body-sm text-xs font-semibold text-primary hover:underline"
+                className="text-[12px] font-semibold text-[#2563eb] hover:underline"
               >
                 Full History →
               </button>
             </div>
             {commits.length === 0 ? (
-              <div className="p-8 text-center font-body-sm text-xs text-secondary">
+              <div className="p-8 text-center text-[13px] text-[#5263a0]">
                 No commits returned for this repository.
               </div>
             ) : (
-              <div className="divide-y divide-surface-container">
+              <div className="divide-y divide-[#f1f3fb]">
                 {commits.slice(0, 6).map((c) => (
                   <div
                     key={c.hash}
-                    className="px-5 py-3.5 flex items-center justify-between gap-4 hover:bg-surface-container-low/50"
+                    className="px-5 py-3 flex items-center justify-between gap-4 hover:bg-[#f5f6ff] transition-colors"
                   >
-                    <div>
-                      <div className="font-body-sm text-xs font-semibold text-on-surface">
-                        {c.message}
-                      </div>
-                      <div className="font-code-sm text-[11px] text-secondary mt-0.5">
-                        {c.hash} • {c.branch} • {c.authorHandle}
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-medium text-[#10172a] truncate">{c.message}</div>
+                      <div className="text-[11px] font-mono text-[#5263a0] mt-0.5">
+                        <span className="text-[#2563eb]">{c.hash}</span>
+                        {' · '}{c.branch}{' · '}{c.authorHandle}
                       </div>
                     </div>
-                    <span className="font-code-sm text-[11px] text-secondary">
-                      {c.timestampRelative}
-                    </span>
+                    <span className="text-[11px] font-mono text-[#8890b8] shrink-0">{c.timestampRelative}</span>
                   </div>
                 ))}
               </div>
             )}
           </div>
 
-          {/* Repository Telemetry & Merge Requests */}
+          {/* Sidebar Panels */}
           <div className="lg:col-span-4 space-y-4">
-            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/20 p-5 space-y-3">
+            {/* Repo Telemetry */}
+            <div className="vdb-card p-5 space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="font-headline text-title-md text-on-surface">
-                  Repository Telemetry
-                </h3>
-                <span className="font-code-sm text-xs text-secondary">
-                  {activeRepo ? activeRepo.connectionMode : 'Unconnected'}
-                </span>
+                <h3 className="text-[14px] font-semibold text-[#10172a]">Repository</h3>
+                {activeRepo && (
+                  <span className="badge badge-blue">{activeRepo.connectionMode}</span>
+                )}
               </div>
               {activeRepo ? (
-                <div className="space-y-2 text-xs font-code-sm">
-                  <div className="flex justify-between">
-                    <span className="text-secondary">Engine:</span>
-                    <span className="text-on-surface">
-                      {activeRepo.engine} {activeRepo.engineVersion}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-secondary">Region:</span>
-                    <span className="text-on-surface">{activeRepo.region}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-secondary">Latency:</span>
-                    <span className="text-on-surface">{activeRepo.latencyMs}ms</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-secondary">WAL Lag:</span>
-                    <span className="text-on-surface">{activeRepo.walLag}</span>
-                  </div>
+                <div className="space-y-2">
+                  {[
+                    { label: 'Engine', value: `${activeRepo.engine} ${activeRepo.engineVersion}` },
+                    { label: 'Region', value: activeRepo.region },
+                    { label: 'Latency', value: `${activeRepo.latencyMs}ms` },
+                    { label: 'WAL Lag', value: activeRepo.walLag },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="flex justify-between text-[12px]">
+                      <span className="text-[#8890b8] font-mono">{label}</span>
+                      <span className="text-[#10172a] font-mono font-medium">{value}</span>
+                    </div>
+                  ))}
                 </div>
               ) : (
-                <p className="font-body-sm text-xs text-secondary">
+                <p className="text-[12px] text-[#5263a0]">
                   Telemetry metrics are unavailable until a backend repository is connected.
                 </p>
               )}
             </div>
 
-            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/20 p-5 space-y-3">
+            {/* Merge Requests */}
+            <div className="vdb-card p-5 space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="font-headline text-title-md text-on-surface">Merge Requests</h3>
+                <h3 className="text-[14px] font-semibold text-[#10172a]">Merge Requests</h3>
                 <button
                   type="button"
                   onClick={() => setCreateMrModalOpen(true)}
-                  className="text-xs font-semibold text-primary hover:underline"
+                  className="text-[12px] font-semibold text-[#2563eb] hover:underline"
                 >
                   + Open MR
                 </button>
               </div>
               {openMrs.length === 0 ? (
-                <p className="font-body-sm text-xs text-secondary">No open Merge Requests.</p>
+                <p className="text-[12px] text-[#5263a0]">No open Merge Requests.</p>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {openMrs.slice(0, 4).map((mr) => (
                     <button
                       key={mr.id}
                       type="button"
                       onClick={() => navigateTo('merge-requests')}
-                      className="w-full text-left p-2.5 rounded-lg bg-surface-container-low hover:bg-surface-container transition-colors"
+                      className="w-full text-left p-2.5 rounded-lg bg-[#f5f6ff] hover:bg-[#eff4ff] border border-[#e2e5f6] transition-colors"
                     >
-                      <div className="font-code-sm text-xs font-semibold text-on-surface">
+                      <div className="text-[12px] font-semibold text-[#10172a]">
                         #{mr.number} {mr.title}
                       </div>
-                      <div className="font-code-sm text-[10px] text-secondary mt-0.5">
+                      <div className="text-[11px] font-mono text-[#5263a0] mt-0.5">
                         {mr.sourceBranch} → {mr.targetBranch}
                       </div>
                     </button>

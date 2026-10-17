@@ -66,6 +66,10 @@ export class PgRepositoryRepo implements RepositoryRepo {
   async lockForUpdate(id: string) {
     await this.db.query('SELECT id FROM repositories WHERE id = $1 FOR UPDATE', [id]);
   }
+  async delete(id: string) {
+    const r = await this.db.query('DELETE FROM repositories WHERE id = $1', [id]);
+    return (r.rowCount ?? 0) === 1;
+  }
 }
 
 export class PgMemberRepo implements MemberRepo {

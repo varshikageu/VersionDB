@@ -27,18 +27,18 @@ export const TableDataScreen: React.FC = () => {
   const rows = activeTable ? tableRowsByTable[activeTable.name] || [] : [];
 
   return (
-    <div className="flex flex-col w-full pb-12 pt-2 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="vdb-page">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="font-label-mono text-label-sm uppercase text-primary mb-1">
+          <div className="text-[11px] font-mono text-[#2563eb] font-semibold uppercase tracking-wider mb-1">
             Primary-Key Record Browser
           </div>
-          <h1 className="font-headline text-headline-lg text-on-surface">
+          <h1 className="text-[22px] font-bold text-[#10172a] tracking-tight">
             Table Data Browser & Row Staging
           </h1>
-          <p className="font-body-sm text-body-sm text-secondary mt-0.5">
-            Inspect table records and stage row-level INSERT, UPDATE, or DELETE mutations for
-            versioned commits.
+          <p className="text-[13px] text-[#5263a0] mt-0.5">
+            Inspect table records and stage row-level INSERT, UPDATE, or DELETE mutations for versioned commits.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -46,7 +46,7 @@ export const TableDataScreen: React.FC = () => {
             <select
               value={activeTable?.name || ''}
               onChange={(e) => setSelectedTableName(e.target.value)}
-              className="rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-3 py-1.5 font-code-sm text-xs text-on-surface"
+              className="rounded-lg border border-[#e2e5f6] bg-white px-3 py-1.5 font-mono text-[12px] text-[#10172a] focus:outline-none focus:border-[#2563eb]"
             >
               {tables.map((t) => (
                 <option key={t.name} value={t.name}>
@@ -59,8 +59,9 @@ export const TableDataScreen: React.FC = () => {
             <button
               type="button"
               onClick={() => setCommitModalOpen(true)}
-              className="px-3.5 py-2 rounded-lg bg-primary text-white font-body-sm text-xs font-semibold"
+              className="btn-primary"
             >
+              <span className="material-symbols-outlined text-[15px]">commit</span>
               Commit Staged ({stagedRowMutations.length})
             </button>
           )}
@@ -89,29 +90,39 @@ export const TableDataScreen: React.FC = () => {
           onSecondaryAction={() => navigateTo('schema-explorer')}
         />
       ) : (
-        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/25 overflow-x-auto">
-          <table className="w-full text-left border-collapse font-code-sm text-xs">
-            <thead>
-              <tr className="bg-surface-container-low border-b border-surface-container text-secondary">
-                {activeTable.columns.map((c) => (
-                  <th key={c.name} className="py-2.5 px-3">
-                    {c.name}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-surface-container">
-              {rows.map((r, idx) => (
-                <tr key={idx}>
+        <div className="vdb-card overflow-hidden">
+          <div className="px-5 py-3 border-b border-[#f1f3fb] flex items-center justify-between">
+            <span className="font-mono text-[13px] font-semibold text-[#10172a]">
+              {activeTable.schema}.{activeTable.name}
+            </span>
+            <span className="text-[12px] font-mono text-[#8890b8]">
+              {rows.length} rows loaded
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="vdb-table font-mono text-[12px]">
+              <thead>
+                <tr>
                   {activeTable.columns.map((c) => (
-                    <td key={c.name} className="py-2.5 px-3 text-on-surface">
-                      {String(r[c.name] ?? 'NULL')}
-                    </td>
+                    <th key={c.name}>
+                      {c.name}
+                    </th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {rows.map((r, idx) => (
+                  <tr key={idx} className="hover:bg-[#f8f9ff]">
+                    {activeTable.columns.map((c) => (
+                      <td key={c.name} className="text-[#10172a]">
+                        {String(r[c.name] ?? 'NULL')}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

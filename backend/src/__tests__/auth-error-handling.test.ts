@@ -58,8 +58,8 @@ describe('VersionDB Express Backend Async Error Handling & Rejection Regression'
         };
       },
       register: async ({ email, username }: { email: string; username: string }) => {
-        if (email === 'existing@example.com' || username === 'existinguser') {
-          throw conflict('ACCOUNT_EXISTS', 'An account with that email or username already exists');
+        if (email === 'existing@example.com') {
+          throw conflict('ACCOUNT_EXISTS', 'An account with that email already exists');
         }
         return {
           id: 'u-2',
@@ -254,7 +254,7 @@ describe('VersionDB Express Backend Async Error Handling & Rejection Regression'
     assert.equal(unhandledRejections.length, 0, 'No unhandled promise rejection should occur');
   });
 
-  it('returns 409 for duplicate username during registration without unhandledRejection', async () => {
+  it('allows duplicate usernames (display names) for distinct emails during registration', async () => {
     const res = await fetch(`${baseUrl}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -264,9 +264,10 @@ describe('VersionDB Express Backend Async Error Handling & Rejection Regression'
         password: 'ValidPassword123!',
       }),
     });
-    assert.equal(res.status, 409);
-    const body = (await res.json()) as { error: { code: string } };
-    assert.equal(body.error.code, 'ACCOUNT_EXISTS');
+    assert.equal(res.status, 201, 'Registration with existing display name but distinct email should succeed');
+    const body = (await res.json()) as { user: { email: string; username: string } };
+    assert.equal(body.user.email, 'uniqueemail@example.com');
+    assert.equal(body.user.username, 'existinguser');
     assert.equal(unhandledRejections.length, 0, 'No unhandled promise rejection should occur');
   });
 });

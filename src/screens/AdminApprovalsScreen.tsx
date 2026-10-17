@@ -25,28 +25,29 @@ export const AdminApprovalsScreen: React.FC = () => {
   const [reasonByApproval, setReasonByApproval] = useState<Record<string, string>>({});
 
   return (
-    <div className="flex flex-col w-full pb-12 pt-2 space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="vdb-page">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="font-label-mono text-label-sm uppercase text-primary mb-1">
+          <div className="text-[11px] font-mono text-[#2563eb] font-semibold uppercase tracking-wider mb-1">
             Protected Branch Governance
           </div>
-          <h1 className="font-headline text-headline-lg text-on-surface">
+          <h1 className="text-[22px] font-bold text-[#10172a] tracking-tight">
             Admin Approvals & Escalation Queue
           </h1>
-          <p className="font-body-sm text-body-sm text-secondary mt-0.5">
+          <p className="text-[13px] text-[#5263a0] mt-0.5">
             Lead DBA sign-off queue for protected production merges and escalated conflicts.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 font-code-sm text-code-sm">
-          <span className="px-2.5 py-1 rounded bg-surface-container text-secondary">
-            UI Role Hint: <strong className="text-on-surface">{currentUser.role}</strong>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="badge badge-neutral">
+            Role: <strong className="text-[#10172a] font-semibold">{currentUser.role}</strong>
           </span>
           {!roleCapabilities.canAdminApproveEscalation && (
             <button
               type="button"
               onClick={() => navigateTo('403')}
-              className="px-2.5 py-1 rounded bg-error-container/30 hover:bg-error-container/50 text-error font-medium transition-colors"
+              className="text-[12px] font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2.5 py-1 rounded-lg transition-colors"
             >
               Inspect 403 Policy View →
             </button>
@@ -74,20 +75,20 @@ export const AdminApprovalsScreen: React.FC = () => {
           onAction={() => navigateTo('merge-requests')}
         />
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3.5">
           {adminApprovals.map((item) => (
             <div
               key={item.id}
-              className="p-5 rounded-xl bg-surface-container-lowest border border-outline-variant/25 space-y-3"
+              className="vdb-card p-5 space-y-3"
             >
-              <div className="flex items-center justify-between">
-                <div className="font-headline text-title-md text-on-surface">
+              <div className="flex items-center justify-between pb-2 border-b border-[#f1f3fb]">
+                <div className="text-[15px] font-semibold text-[#10172a]">
                   MR #{item.mrNumber} — {item.mrTitle}
                 </div>
-                <span className="font-code-sm text-xs text-secondary">{item.status}</span>
+                <span className="badge badge-amber">{item.status}</span>
               </div>
-              <p className="font-body-sm text-xs text-secondary">{item.blockerSummary}</p>
-              <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[13px] text-[#5263a0] leading-relaxed">{item.blockerSummary}</p>
+              <div className="flex flex-wrap items-center gap-2.5 pt-2">
                 <input
                   type="text"
                   value={reasonByApproval[item.id] || ''}
@@ -95,7 +96,7 @@ export const AdminApprovalsScreen: React.FC = () => {
                     setReasonByApproval((prev) => ({ ...prev, [item.id]: e.target.value }))
                   }
                   placeholder="Enter Lead DBA decision reason..."
-                  className="flex-1 rounded-lg border border-outline-variant/40 px-3 py-1.5 font-body-sm text-xs"
+                  className="vdb-input flex-1 text-[12px] py-1.5"
                 />
                 <button
                   type="button"
@@ -103,7 +104,7 @@ export const AdminApprovalsScreen: React.FC = () => {
                   onClick={() =>
                     void decideAdminApproval(item.id, 'APPROVED', reasonByApproval[item.id] || '')
                   }
-                  className="px-3.5 py-1.5 rounded-lg bg-primary text-white font-body-sm text-xs font-semibold disabled:opacity-50"
+                  className="btn-primary text-[12px] py-1.5"
                 >
                   Approve
                 </button>
@@ -113,7 +114,7 @@ export const AdminApprovalsScreen: React.FC = () => {
                   onClick={() =>
                     void decideAdminApproval(item.id, 'REJECTED', reasonByApproval[item.id] || '')
                   }
-                  className="px-3.5 py-1.5 rounded-lg bg-error text-white font-body-sm text-xs font-semibold disabled:opacity-50"
+                  className="btn-primary text-[12px] py-1.5 bg-red-600 hover:bg-red-700 text-white"
                 >
                   Reject
                 </button>
