@@ -25,7 +25,7 @@ export class AuthService {
         return toPublicUser(user);
       });
     } catch (e) {
-      if (isUniqueViolation(e)) throw conflict('ACCOUNT_EXISTS', 'An account with that email or username already exists');
+      if (isUniqueViolation(e)) throw conflict('ACCOUNT_EXISTS', 'An account with that email already exists');
       throw e;
     }
   }

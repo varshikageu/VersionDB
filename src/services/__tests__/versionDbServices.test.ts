@@ -1033,4 +1033,55 @@ describe('VersionDB Integration Bug Fix Regressions', () => {
     assert.equal(notFoundRes.ok, false);
     assert.equal(notFoundRes.statusCode, 404);
   });
+
+  it('repositories.deleteRepository validates empty repoId before making network request', async () => {
+    let fetchCalled = false;
+    const client = new VersionDbApiClient({
+      apiBaseUrl: 'http://localhost:3000',
+      fetchImpl: async () => {
+        fetchCalled = true;
+        return new Response('{}', { status: 200 });
+      },
+    });
+
+    const services = createVersionDbServices(client);
+    const res = await services.repositories.deleteRepository('   ');
+
+    assert.equal(res.ok, false);
+    assert.equal(res.errorCode, 'VALIDATION_ERROR');
+    assert.equal(fetchCalled, false, 'Fetch should not be called with empty repoId');
+  });
+
+  it('repositories.deleteRepository sends DELETE /api/repos/:repoId with sessionToken', async () => {
+    let capturedUrl = '';
+    let capturedMethod = '';
+    let capturedAuth = '';
+
+    const client = new VersionDbApiClient({
+      apiBaseUrl: 'http://localhost:3000',
+      fetchImpl: async (url, init) => {
+        capturedUrl = url.toString();
+        capturedMethod = init?.method || '';
+        capturedAuth = (init?.headers as Record<string, string>)?.['Authorization'] || '';
+        return new Response(
+          JSON.stringify({
+            deleted: true,
+            repoId: 'repo-abc-123',
+            name: 'payments-db',
+          }),
+          { status: 200 }
+        );
+      },
+    });
+
+    const services = createVersionDbServices(client);
+    const res = await services.repositories.deleteRepository('repo-abc-123', 'owner-token-xyz');
+
+    assert.equal(res.ok, true);
+    assert.equal(capturedUrl, 'http://localhost:3000/api/repos/repo-abc-123');
+    assert.equal(capturedMethod, 'DELETE');
+    assert.equal(capturedAuth, 'Bearer owner-token-xyz');
+    assert.equal(res.data?.deleted, true);
+    assert.equal(res.data?.repoId, 'repo-abc-123');
+  });
 });

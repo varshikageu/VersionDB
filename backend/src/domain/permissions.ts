@@ -1,7 +1,7 @@
 import { forbidden } from '../shared/errors';
 import type { GlobalRole, RepoRole } from './types';
 
-export type Capability = 'repo:read' | 'record:write' | 'commit:create' | 'branch:create' | 'branch:delete' | 'member:manage';
+export type Capability = 'repo:read' | 'record:write' | 'commit:create' | 'branch:create' | 'branch:delete' | 'member:manage' | 'repo:delete';
 
 const RANK: Record<RepoRole, number> = { viewer: 1, reviewer: 2, maintainer: 3, owner: 4 };
 
@@ -13,6 +13,7 @@ const REQUIRED: Record<Capability, RepoRole> = {
   'branch:create': 'maintainer',
   'branch:delete': 'maintainer',
   'member:manage': 'owner',
+  'repo:delete': 'owner',
 };
 
 /** Platform admins act as owner everywhere. */

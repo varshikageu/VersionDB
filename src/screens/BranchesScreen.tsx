@@ -25,44 +25,60 @@ export const BranchesScreen: React.FC = () => {
     activeRepo,
     deleteBranch,
     isOperationPending,
+    stagedRowMutations,
+    stagedDdlChanges,
+    discardAllStaged,
   } = useVersionDb();
 
   const [branchToDelete, setBranchToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [discardUncommittedConfirmed, setDiscardUncommittedConfirmed] = useState(false);
+
+  const hasUncommittedChanges =
+    branchToDelete === activeBranch &&
+    (stagedRowMutations.length > 0 || stagedDdlChanges.length > 0);
 
   const handleDeleteConfirm = async () => {
     if (!branchToDelete || isDeleting) return;
+    if (hasUncommittedChanges && !discardUncommittedConfirmed) {
+      setDeleteError('This branch has uncommitted changes. Please check the discard confirmation box below to proceed.');
+      return;
+    }
+    if (hasUncommittedChanges && discardUncommittedConfirmed) {
+      discardAllStaged();
+    }
     setIsDeleting(true);
     setDeleteError(null);
     const res = await deleteBranch(branchToDelete);
     setIsDeleting(false);
     if (res.ok) {
       setBranchToDelete(null);
+      setDiscardUncommittedConfirmed(false);
     } else {
       setDeleteError(res.error || 'Failed to delete branch.');
     }
   };
 
   return (
-    <div className="flex flex-col w-full pb-12 pt-2 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="vdb-page">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="font-label-mono text-label-sm uppercase text-primary mb-1">
+          <div className="text-[11px] font-mono text-[#2563eb] font-semibold uppercase tracking-wider mb-1">
             Copy-on-Write Database Isolation
           </div>
-          <h1 className="font-headline text-headline-lg text-on-surface">Branches & Divergence</h1>
-          <p className="font-body-sm text-body-sm text-secondary mt-0.5">
-            Checkout isolated database branches, compare schema/row divergence, or open a Merge
-            Request.
+          <h1 className="text-[22px] font-bold text-[#10172a] tracking-tight">Branches & Divergence</h1>
+          <p className="text-[13px] text-[#5263a0] mt-0.5">
+            Checkout isolated database branches, compare schema/row divergence, or open a Merge Request.
           </p>
         </div>
         <button
           type="button"
           onClick={() => setCreateBranchModalOpen(true)}
-          className="px-4 py-2 bg-gradient-to-b from-primary to-primary-container text-on-primary rounded-lg font-body-sm text-body-sm font-semibold shadow-sm hover:opacity-95 flex items-center gap-2"
+          className="btn-primary"
         >
-          <span className="material-symbols-outlined text-sm">call_split</span>
+          <span className="material-symbols-outlined text-[15px]">call_split</span>
           New Branch
         </button>
       </div>
@@ -87,18 +103,18 @@ export const BranchesScreen: React.FC = () => {
           onAction={() => setCreateBranchModalOpen(true)}
         />
       ) : (
-        <div className="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden border border-outline-variant/20">
-          <table className="w-full text-left border-collapse">
+        <div className="vdb-card overflow-hidden">
+          <table className="vdb-table">
             <thead>
-              <tr className="bg-surface-container-low font-label-mono text-label-sm uppercase text-secondary border-b border-surface-container">
-                <th className="py-3 px-4">Branch Name</th>
-                <th className="py-3 px-4">HEAD Commit</th>
-                <th className="py-3 px-4">Divergence</th>
-                <th className="py-3 px-4">Author & Updated</th>
-                <th className="py-3 px-4 text-right">Actions</th>
+              <tr>
+                <th>Branch Name</th>
+                <th>HEAD Commit</th>
+                <th>Divergence</th>
+                <th>Author & Updated</th>
+                <th className="text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-surface-container font-body-sm text-body-sm">
+            <tbody>
               {branches.map((b) => {
                 const isCurrent = b.name === activeBranch;
                 const isDefault = b.name === (activeRepo?.defaultBranch || 'main');
@@ -108,40 +124,41 @@ export const BranchesScreen: React.FC = () => {
                   <tr
                     key={b.name}
                     className={
-                      isCurrent ? 'bg-primary-fixed/20' : 'hover:bg-surface-container-low/60'
+                      isCurrent ? 'bg-[#eff4ff]/60' : 'hover:bg-[#f8f9ff]'
                     }
                   >
-                    <td className="py-3.5 px-4">
+                    <td>
                       <div className="flex items-center gap-2">
-                        <span className="font-code-sm font-semibold text-on-surface">{b.name}</span>
+                        <span className={`font-mono text-[13px] font-semibold ${isCurrent ? 'text-[#2563eb]' : 'text-[#10172a]'}`}>
+                          {b.name}
+                        </span>
+                        {isCurrent && (
+                          <span className="badge badge-blue">Active</span>
+                        )}
                         {b.isProtected && (
-                          <span className="px-1.5 py-0.5 rounded bg-primary-fixed text-primary font-label-mono text-[10px] uppercase">
-                            Protected
-                          </span>
+                          <span className="badge badge-neutral">Protected</span>
                         )}
                         {isDefault && (
-                          <span className="px-1.5 py-0.5 rounded bg-surface-container-high text-secondary font-label-mono text-[10px] uppercase">
-                            Default
-                          </span>
+                          <span className="badge badge-neutral">Default</span>
                         )}
                       </div>
                     </td>
-                    <td className="py-3.5 px-4 font-code-sm text-xs text-on-surface">
-                      {b.headCommitHash} — {b.headCommitTitle}
+                    <td className="font-mono text-[12px] text-[#5263a0]">
+                      <span className="text-[#10172a] font-medium">{b.headCommitHash}</span> — {b.headCommitTitle}
                     </td>
-                    <td className="py-3.5 px-4 font-code-sm text-xs text-secondary">
-                      +{b.aheadCount} / -{b.behindCount}
+                    <td className="font-mono text-[12px] text-[#5263a0]">
+                      <span className="text-emerald-600 font-semibold">+{b.aheadCount}</span> / <span className="text-red-500 font-semibold">-{b.behindCount}</span>
                     </td>
-                    <td className="py-3.5 px-4 font-code-sm text-xs text-secondary">
-                      {b.authorHandle} • {b.updatedRelative}
+                    <td className="text-[12px] text-[#5263a0]">
+                      <span className="font-medium text-[#10172a]">{b.authorHandle}</span> • {b.updatedRelative}
                     </td>
-                    <td className="py-3.5 px-4 text-right">
+                    <td className="text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         {!isCurrent && (
                           <button
                             type="button"
                             onClick={() => selectBranch(b.name)}
-                            className="px-2.5 py-1 rounded bg-surface-container hover:bg-surface-container-high text-xs font-medium text-on-surface"
+                            className="btn-secondary text-[12px] py-1 px-2.5"
                           >
                             Checkout
                           </button>
@@ -153,7 +170,7 @@ export const BranchesScreen: React.FC = () => {
                             setCompareTargetBranch('main');
                             navigateTo('changes-and-diff');
                           }}
-                          className="px-2.5 py-1 rounded bg-surface-container-low hover:bg-surface-container text-xs font-medium text-secondary"
+                          className="btn-secondary text-[12px] py-1 px-2.5"
                         >
                           Diff
                         </button>
@@ -164,7 +181,7 @@ export const BranchesScreen: React.FC = () => {
                               selectBranch(b.name);
                               setCreateMrModalOpen(true);
                             }}
-                            className="px-2.5 py-1 rounded bg-primary/10 hover:bg-primary/20 text-xs font-semibold text-primary"
+                            className="btn-secondary text-[12px] py-1 px-2.5 text-[#2563eb] border-[#c2d4ff] hover:bg-[#eff4ff]"
                           >
                             Open MR
                           </button>
@@ -172,19 +189,20 @@ export const BranchesScreen: React.FC = () => {
                         {canDeleteThisBranch && (
                           <button
                             type="button"
-                            disabled={isCurrent || b.isProtected || isDeleting || isOperationPending}
+                            disabled={b.isProtected || isDeleting || isOperationPending}
                             onClick={() => {
                               setDeleteError(null);
+                              setDiscardUncommittedConfirmed(false);
                               setBranchToDelete(b.name);
                             }}
                             title={
-                              isCurrent
-                                ? 'Cannot delete active branch. Checkout another branch first.'
-                                : b.isProtected
+                              b.isProtected
                                 ? 'Protected branch cannot be deleted.'
+                                : isCurrent
+                                ? `Delete active branch ${b.name} (will automatically switch to default branch)`
                                 : `Delete branch ${b.name}`
                             }
-                            className="px-2.5 py-1 rounded bg-error/10 hover:bg-error/20 text-xs font-semibold text-error disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            className="text-[12px] py-1 px-2 rounded-lg font-medium text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             Delete
                           </button>
@@ -202,7 +220,7 @@ export const BranchesScreen: React.FC = () => {
       {/* Delete Branch Confirmation Modal */}
       {branchToDelete && (
         <div
-          className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-[#10172a]/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
           onClick={(e) => {
             if (e.target === e.currentTarget && !isDeleting) {
               setBranchToDelete(null);
@@ -210,18 +228,18 @@ export const BranchesScreen: React.FC = () => {
             }
           }}
         >
-          <div className="bg-white rounded-xl shadow-2xl border border-outline-variant/30 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-xl shadow-[0_20px_40px_rgba(16,23,42,0.15)] border border-[#e2e5f6] w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-150">
             {/* Modal Header */}
-            <div className="px-6 py-4.5 border-b border-surface-container flex items-center justify-between bg-surface-container-lowest">
+            <div className="px-6 py-4 border-b border-[#f1f3fb] flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-error/10 flex items-center justify-center text-error">
-                  <span className="material-symbols-outlined text-xl">delete_forever</span>
+                <div className="w-9 h-9 rounded-xl bg-red-50 border border-red-100 flex items-center justify-center text-red-600">
+                  <span className="material-symbols-outlined text-[20px]">delete_forever</span>
                 </div>
                 <div>
-                  <h3 className="font-headline text-base font-semibold text-on-surface">
+                  <h3 className="text-[15px] font-semibold text-[#10172a]">
                     Delete Branch
                   </h3>
-                  <p className="font-body-sm text-xs text-secondary mt-0.5">
+                  <p className="text-[12px] text-[#5263a0] mt-0.5">
                     {activeRepo ? `Repository: ${activeRepo.name}` : 'Permanent branch deletion'}
                   </p>
                 </div>
@@ -233,33 +251,72 @@ export const BranchesScreen: React.FC = () => {
                   setBranchToDelete(null);
                   setDeleteError(null);
                 }}
-                className="text-slate-400 hover:text-slate-600 rounded-lg p-1 transition-colors disabled:opacity-40"
+                className="text-[#8890b8] hover:text-[#10172a] rounded-lg p-1 transition-colors disabled:opacity-40"
                 aria-label="Close modal"
               >
-                <span className="material-symbols-outlined text-xl">close</span>
+                <span className="material-symbols-outlined text-[18px]">close</span>
               </button>
             </div>
 
             {/* Modal Body */}
             <div className="p-6 space-y-4">
               {deleteError && (
-                <div className="p-3.5 rounded-lg bg-error-container/30 border border-error/30 flex items-start gap-2.5 text-xs text-error">
-                  <span className="material-symbols-outlined text-sm mt-0.5 shrink-0">error</span>
+                <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 flex items-start gap-2.5 text-[12px] text-red-700">
+                  <span className="material-symbols-outlined text-[16px] mt-0.5 shrink-0 text-red-500">error</span>
                   <span>{deleteError}</span>
                 </div>
               )}
 
-              <p className="font-body-sm text-sm text-on-surface">
+              <p className="text-[13px] text-[#10172a] leading-relaxed">
                 Are you sure you want to permanently delete branch{' '}
-                <span className="font-code-sm font-bold text-error px-1.5 py-0.5 rounded bg-error/10">
+                <span className="font-mono font-bold text-red-600 px-1.5 py-0.5 rounded bg-red-50 border border-red-100">
                   {branchToDelete}
                 </span>
                 ?
               </p>
 
-              <div className="p-3 bg-surface-container-low rounded-lg text-xs text-secondary space-y-1">
-                <div className="font-medium text-on-surface flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-sm text-primary">info</span>
+              {branchToDelete === activeBranch && (
+                <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-[12px] text-amber-900 space-y-1">
+                  <div className="font-semibold flex items-center gap-1.5 text-amber-800">
+                    <span className="material-symbols-outlined text-[16px] text-amber-600">swap_horiz</span>
+                    <span>Active Branch Switch:</span>
+                  </div>
+                  <p className="opacity-90">
+                    Branch <code className="font-mono font-bold">{branchToDelete}</code> is currently checked out.
+                    Deleting it will automatically switch your active branch to default (<code className="font-mono font-bold">{activeRepo?.defaultBranch || 'main'}</code>).
+                  </p>
+                </div>
+              )}
+
+              {hasUncommittedChanges && (
+                <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl space-y-2">
+                  <div className="font-semibold text-[12px] text-red-800 flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[16px] text-red-600">warning</span>
+                    <span>Uncommitted Working Changes Detected</span>
+                  </div>
+                  <p className="text-[12px] text-[#5263a0]">
+                    You have uncommitted staged rows or DDL mutations on this branch. Deleting will permanently discard them.
+                  </p>
+                  <label className="flex items-center gap-2 cursor-pointer pt-1">
+                    <input
+                      type="checkbox"
+                      checked={discardUncommittedConfirmed}
+                      onChange={(e) => {
+                        setDiscardUncommittedConfirmed(e.target.checked);
+                        if (e.target.checked) setDeleteError(null);
+                      }}
+                      className="rounded border-[#c5c9e4] text-[#2563eb] focus:ring-[#2563eb]"
+                    />
+                    <span className="text-[12px] font-semibold text-red-700">
+                      I understand and confirm discarding all uncommitted changes
+                    </span>
+                  </label>
+                </div>
+              )}
+
+              <div className="p-3.5 bg-[#f5f6ff] border border-[#e2e5f6] rounded-xl text-[12px] text-[#5263a0] space-y-1">
+                <div className="font-medium text-[#10172a] flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[16px] text-[#2563eb]">info</span>
                   <span>Preservation Notice:</span>
                 </div>
                 <p>
@@ -270,7 +327,7 @@ export const BranchesScreen: React.FC = () => {
             </div>
 
             {/* Modal Footer */}
-            <div className="px-6 py-4 bg-surface-container-low border-t border-surface-container flex items-center justify-end gap-2.5">
+            <div className="px-6 py-3.5 bg-[#fbfbfe] border-t border-[#f1f3fb] flex items-center justify-end gap-2.5">
               <button
                 type="button"
                 disabled={isDeleting}
@@ -278,7 +335,7 @@ export const BranchesScreen: React.FC = () => {
                   setBranchToDelete(null);
                   setDeleteError(null);
                 }}
-                className="px-4 py-2 rounded-lg text-xs font-medium text-secondary hover:text-on-surface hover:bg-surface-container transition-colors disabled:opacity-40"
+                className="btn-secondary text-[12px] py-2 px-3.5"
               >
                 Cancel
               </button>
@@ -286,18 +343,18 @@ export const BranchesScreen: React.FC = () => {
                 type="button"
                 disabled={isDeleting}
                 onClick={handleDeleteConfirm}
-                className="px-4 py-2 rounded-lg bg-error text-white text-xs font-semibold shadow-sm hover:bg-error/90 flex items-center gap-1.5 disabled:opacity-50 transition-colors"
+                className="btn-primary text-[12px] py-2 px-3.5 bg-red-600 hover:bg-red-700 text-white"
               >
                 {isDeleting ? (
                   <>
-                    <span className="material-symbols-outlined text-sm animate-spin">
+                    <span className="material-symbols-outlined text-[15px] animate-spin">
                       progress_activity
                     </span>
                     <span>Deleting Branch...</span>
                   </>
                 ) : (
                   <>
-                    <span className="material-symbols-outlined text-sm">delete</span>
+                    <span className="material-symbols-outlined text-[15px]">delete</span>
                     <span>Delete Branch</span>
                   </>
                 )}

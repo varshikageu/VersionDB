@@ -24,6 +24,7 @@ export interface RepositoryRepo {
   findById(id: string): Promise<Repository | null>;
   listForUser(userId: string, all: boolean): Promise<RepositoryWithRole[]>;
   lockForUpdate(id: string): Promise<void>;
+  delete(id: string): Promise<boolean>;
 }
 
 export interface MemberRepo {

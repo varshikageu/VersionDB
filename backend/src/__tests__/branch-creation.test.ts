@@ -197,6 +197,16 @@ describe('VersionDB Branch Creation API & Service Tests', () => {
         if (idx >= 0) branches.splice(idx, 1);
         return { deleted: true, branchName };
       },
+      delete: async (actor: Actor, repoId: string) => {
+        if (repoId !== testRepoId) throw notFound('Repository');
+        const members = repoMembers.get(repoId);
+        const role = actor.globalRole === 'admin' ? 'owner' : members?.get(actor.userId);
+        if (!role) throw notFound('Repository');
+        if (role !== 'owner') {
+          throw forbidden('FORBIDDEN', 'This action requires the owner role or higher');
+        }
+        return { deleted: true, repoId, name: 'test-repo' };
+      },
     };
 
     const mockContainer: Container = {
@@ -850,5 +860,48 @@ describe('VersionDB Branch Creation API & Service Tests', () => {
         return true;
       }
     );
+  });
+
+  it('DELETE /api/repos/:repoId allows owner to delete repository', async () => {
+    const res = await fetch(`${baseUrl}/api/repos/${testRepoId}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: 'Bearer owner-token',
+      },
+    });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as any;
+    assert.equal(body.deleted, true);
+    assert.equal(body.repoId, testRepoId);
+  });
+
+  it('DELETE /api/repos/:repoId rejects maintainer or viewer with 403', async () => {
+    const resMaintainer = await fetch(`${baseUrl}/api/repos/${testRepoId}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: 'Bearer maintainer-token',
+      },
+    });
+    assert.equal(resMaintainer.status, 403);
+
+    const resViewer = await fetch(`${baseUrl}/api/repos/${testRepoId}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: 'Bearer viewer-token',
+      },
+    });
+    assert.equal(resViewer.status, 403);
+  });
+
+  it('DELETE /api/repos/:repoId allows platform admin to delete repository', async () => {
+    const res = await fetch(`${baseUrl}/api/repos/${testRepoId}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: 'Bearer admin-token',
+      },
+    });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as any;
+    assert.equal(body.deleted, true);
   });
 });

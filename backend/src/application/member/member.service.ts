@@ -44,8 +44,11 @@ export class MemberService {
     await this.uow.transaction(async (repos) => {
       const current = await repos.members.find(repoId, userId);
       if (!current) throw notFound('Member');
-      if (current === 'owner' && role !== 'owner' && (await repos.members.countOwners(repoId)) <= 1) {
-        throw conflict('LAST_OWNER', 'A repository must keep at least one owner');
+      if (current === 'owner' && role !== 'owner') {
+        const ownerCount = await repos.members.countOwners(repoId);
+        if (ownerCount <= 1) {
+          throw conflict('LAST_OWNER', 'A repository must keep at least one owner; cannot demote the last owner');
+        }
       }
       await repos.members.upsert({ repoId, userId, role, addedBy: actor.userId });
       await this.audit.log(repos, { repoId, actorId: actor.userId, action: 'member.set_role', entityType: 'user', entityId: userId, metadata: { role }, ip: actor.ip });

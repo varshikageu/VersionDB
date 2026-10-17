@@ -21,32 +21,22 @@ export const EmptyStateCard: React.FC<EmptyStateProps> = ({
   onSecondaryAction,
 }) => {
   return (
-    <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/25 p-10 text-center flex flex-col items-center justify-center shadow-sm">
-      <div className="w-12 h-12 rounded-xl bg-surface-container-low border border-outline-variant/20 flex items-center justify-center text-secondary mb-4">
-        <span className="material-symbols-outlined text-2xl">{icon}</span>
+    <div className="vdb-card p-12 text-center flex flex-col items-center justify-center">
+      <div className="w-12 h-12 rounded-2xl bg-[#f1f3fb] border border-[#e2e5f6] flex items-center justify-center mb-4">
+        <span className="material-symbols-outlined text-[24px] text-[#8890b8]">{icon}</span>
       </div>
-      <h3 className="font-headline text-title-md text-on-surface mb-1.5">{title}</h3>
-      <p className="font-body-sm text-body-sm text-secondary max-w-md leading-relaxed mb-5">
-        {description}
-      </p>
+      <h3 className="text-[15px] font-semibold text-[#10172a] mb-1.5">{title}</h3>
+      <p className="text-[13px] text-[#5263a0] max-w-md leading-relaxed mb-5">{description}</p>
       {(actionLabel || secondaryActionLabel) && (
         <div className="flex flex-wrap items-center justify-center gap-2.5">
           {actionLabel && onAction && (
-            <button
-              type="button"
-              onClick={onAction}
-              className="px-4 py-2 rounded-lg bg-gradient-to-b from-primary to-primary-container text-on-primary font-body-sm text-body-sm font-semibold shadow-sm hover:opacity-95 transition-all flex items-center gap-1.5"
-            >
-              <span className="material-symbols-outlined text-sm">add</span>
+            <button type="button" onClick={onAction} className="btn-primary">
+              <span className="material-symbols-outlined text-[15px]">add</span>
               {actionLabel}
             </button>
           )}
           {secondaryActionLabel && onSecondaryAction && (
-            <button
-              type="button"
-              onClick={onSecondaryAction}
-              className="px-3.5 py-2 rounded-lg bg-surface-container-low hover:bg-surface-container text-on-surface font-body-sm text-body-sm font-medium border border-outline-variant/25 transition-colors"
-            >
+            <button type="button" onClick={onSecondaryAction} className="btn-secondary">
               {secondaryActionLabel}
             </button>
           )}
@@ -85,32 +75,28 @@ export const BackendStatusBanner: React.FC<BackendStatusBannerProps> = ({
       aria-live="polite"
       className={`rounded-xl border px-4 py-3 flex flex-wrap items-center justify-between gap-3 ${
         isUnconfigured
-          ? 'bg-[#fffbeb] border-[#f59e0b]/35 text-[#92400e]'
-          : 'bg-error-container/25 border-error/25 text-on-surface'
+          ? 'bg-amber-50 border-amber-200 text-amber-900'
+          : 'bg-red-50 border-red-200 text-red-900'
       }`}
     >
       <div className="flex items-start gap-3">
-        <span
-          className={`material-symbols-outlined text-lg mt-0.5 ${
-            isUnconfigured ? 'text-[#d97706]' : 'text-error'
-          }`}
-        >
+        <span className={`material-symbols-outlined text-[18px] mt-0.5 ${isUnconfigured ? 'text-amber-500' : 'text-red-500'}`}>
           {isUnconfigured ? 'cloud_off' : 'report_problem'}
         </span>
         <div>
-          <div className="font-headline text-body-sm font-semibold flex items-center gap-2">
+          <div className="text-[13px] font-semibold flex items-center gap-2 flex-wrap">
             <span>
               {isUnconfigured
                 ? 'Backend Not Configured'
                 : connectionState === 'unauthorized'
-                  ? 'Authentication Required (HTTP 401)'
+                  ? 'Authentication Required'
                   : 'Backend Service Unavailable'}
             </span>
-            <span className="px-2 py-0.5 rounded bg-white/80 border border-outline-variant/30 font-code-sm text-[10px] text-secondary">
+            <code className="px-2 py-0.5 rounded bg-white/80 border border-current/20 text-[10px] font-mono opacity-70">
               {apiBaseUrl ? `VITE_API_BASE_URL=${apiBaseUrl}` : 'VITE_API_BASE_URL unset'}
-            </span>
+            </code>
           </div>
-          <p className="font-body-sm text-xs opacity-90 mt-0.5">
+          <p className="text-[12px] opacity-80 mt-0.5 max-w-xl leading-relaxed">
             {errorMessage ||
               (isUnconfigured
                 ? 'No backend API endpoint is configured. Operational repositories, schemas, commits, and metrics are not loaded until a real VersionDB server is connected.'
@@ -123,9 +109,9 @@ export const BackendStatusBanner: React.FC<BackendStatusBannerProps> = ({
           <button
             type="button"
             onClick={onViewContract}
-            className="px-3 py-1.5 rounded-lg bg-white hover:bg-surface-container-low text-on-surface font-body-sm text-xs font-medium border border-outline-variant/30 transition-colors"
+            className="btn-secondary text-[12px] py-1.5"
           >
-            Inspect Integration Contract
+            View Contract
           </button>
         )}
         {onRetry && (
@@ -133,12 +119,12 @@ export const BackendStatusBanner: React.FC<BackendStatusBannerProps> = ({
             type="button"
             onClick={onRetry}
             disabled={isLoading}
-            className="px-3 py-1.5 rounded-lg bg-on-surface text-white hover:opacity-90 disabled:opacity-50 font-body-sm text-xs font-semibold transition-all flex items-center gap-1.5"
+            className="btn-primary text-[12px] py-1.5"
           >
-            <span className={`material-symbols-outlined text-xs ${isLoading ? 'animate-spin' : ''}`}>
+            <span className={`material-symbols-outlined text-[13px] ${isLoading ? 'animate-spin' : ''}`}>
               refresh
             </span>
-            {isLoading ? 'Checking...' : 'Retry Connection'}
+            {isLoading ? 'Checking...' : 'Retry'}
           </button>
         )}
       </div>
@@ -157,23 +143,28 @@ export const TableSkeletonLoader: React.FC<TableSkeletonProps> = ({
 }) => {
   return (
     <div
-      className="bg-surface-container-lowest rounded-xl border border-outline-variant/20 overflow-hidden shadow-sm animate-pulse"
+      className="vdb-card overflow-hidden animate-pulse"
       aria-busy="true"
       aria-label="Loading data from backend"
     >
-      <div className="bg-surface-container-low px-4 py-3 border-b border-surface-container grid grid-cols-5 gap-4">
+      <div className="bg-[#f1f3fb] px-4 py-3 border-b border-[#e2e5f6] grid gap-4"
+        style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}>
         {Array.from({ length: columns }).map((_, idx) => (
-          <div key={idx} className="h-3 bg-surface-container-high rounded w-24" />
+          <div key={idx} className="h-3 bg-[#e2e5f6] rounded-full w-20" />
         ))}
       </div>
-      <div className="divide-y divide-surface-container">
+      <div className="divide-y divide-[#f1f3fb]">
         {Array.from({ length: rows }).map((_, rIdx) => (
-          <div key={rIdx} className="px-4 py-3.5 grid grid-cols-5 gap-4 items-center">
+          <div
+            key={rIdx}
+            className="px-4 py-3.5 grid gap-4 items-center"
+            style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}
+          >
             {Array.from({ length: columns }).map((__, cIdx) => (
               <div
                 key={cIdx}
-                className={`h-3.5 bg-surface-container rounded ${
-                  cIdx === 0 ? 'w-32' : cIdx === columns - 1 ? 'w-16 justify-self-end' : 'w-24'
+                className={`h-3 bg-[#e8ebf8] rounded-full ${
+                  cIdx === 0 ? 'w-32' : cIdx === columns - 1 ? 'w-14' : 'w-20'
                 }`}
               />
             ))}
@@ -202,37 +193,28 @@ export const ErrorStateCard: React.FC<ErrorStateCardProps> = ({
   return (
     <div
       role="alert"
-      className="bg-error-container/30 border border-error/30 rounded-xl p-5 flex flex-wrap items-center justify-between gap-4"
+      className="bg-red-50 border border-red-200 rounded-xl p-5 flex flex-wrap items-center justify-between gap-4"
     >
       <div className="flex items-start gap-3">
-        <span className="material-symbols-outlined text-error text-xl mt-0.5">error</span>
+        <span className="material-symbols-outlined text-red-500 text-[20px] mt-0.5">error</span>
         <div>
-          <div className="flex items-center gap-2">
-            <h4 className="font-headline text-body-md font-semibold text-on-surface">{title}</h4>
-            <span className="px-2 py-0.5 rounded bg-error/10 text-error font-code-sm text-[11px]">
-              {code}
-            </span>
+          <div className="flex items-center gap-2 mb-0.5">
+            <h4 className="text-[13px] font-semibold text-[#10172a]">{title}</h4>
+            <span className="badge badge-red">{code}</span>
           </div>
-          <p className="font-body-sm text-body-sm text-secondary mt-0.5">{message}</p>
+          <p className="text-[12px] text-[#5263a0]">{message}</p>
         </div>
       </div>
       <div className="flex items-center gap-2">
         {onRetry && (
-          <button
-            type="button"
-            onClick={onRetry}
-            className="px-3.5 py-1.5 rounded-lg bg-error text-white font-body-sm text-body-sm font-semibold hover:opacity-95 transition-opacity flex items-center gap-1.5"
-          >
-            <span className="material-symbols-outlined text-sm">refresh</span>
-            Retry Request
+          <button type="button" onClick={onRetry}
+            className="btn-primary text-[12px] py-1.5 bg-red-600 hover:bg-red-700">
+            <span className="material-symbols-outlined text-[13px]">refresh</span>
+            Retry
           </button>
         )}
         {onDismiss && (
-          <button
-            type="button"
-            onClick={onDismiss}
-            className="px-3 py-1.5 rounded-lg bg-surface-container-lowest hover:bg-surface-container text-secondary font-body-sm text-body-sm font-medium border border-outline-variant/25"
-          >
+          <button type="button" onClick={onDismiss} className="btn-secondary text-[12px] py-1.5">
             Dismiss
           </button>
         )}

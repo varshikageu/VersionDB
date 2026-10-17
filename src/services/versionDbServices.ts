@@ -621,6 +621,40 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
         };
       },
 
+      async deleteRepository(
+        repoId: string,
+        sessionToken?: string | null
+      ): Promise<ServiceOperationResult<{ deleted: boolean; repoId: string; name: string }>> {
+        const cleanId = repoId.trim();
+        if (!cleanId) {
+          return {
+            ok: false,
+            errorCode: 'VALIDATION_ERROR',
+            error: 'Repository ID is required for deletion.',
+          };
+        }
+        const res = await client.request<{ deleted: boolean; repoId: string; name: string }>(
+          `/api/repos/${cleanId}`,
+          {
+            method: 'DELETE',
+            sessionToken,
+          }
+        );
+        if (res.ok && res.data) {
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: res.data,
+          };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error || 'Failed to delete repository.',
+        };
+      },
+
       async updateConnectionMode(
         repositoryId: string,
         mode: DatabaseConnectionMode,

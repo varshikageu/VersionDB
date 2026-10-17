@@ -7,10 +7,7 @@ export const LoginScreen: React.FC = () => {
     signInWithBackend,
     registerWithBackend,
     isOperationPending,
-    isBackendConfigured,
-    apiBaseUrl,
     navigateTo,
-    setApiContractDrawerOpen,
   } = useVersionDb();
 
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -85,248 +82,233 @@ export const LoginScreen: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen w-full bg-[#0f1117] text-on-surface flex">
-      {/* Left Panel — slim brand sidebar */}
-      <div className="hidden lg:flex lg:w-[340px] xl:w-[380px] shrink-0 flex-col justify-between p-10 border-r border-white/[0.06]">
-        <div>
-          {/* Logo mark */}
-          <div className="flex items-center gap-2.5 mb-14">
-            <VersionDbLogo size={32} className="bg-slate-800" />
-            <span className="text-white font-headline text-lg font-semibold tracking-tight">VersionDB</span>
-          </div>
+    <div className="min-h-screen w-full bg-gradient-to-br from-slate-50 via-indigo-50/40 to-purple-50/30 text-on-surface flex items-center justify-center p-4 sm:p-6 lg:p-10 relative overflow-hidden">
+      {/* Subtle background decorative blurs */}
+      <div className="absolute top-[-10%] left-[-10%] w-[45vw] h-[45vw] rounded-full bg-indigo-200/25 blur-3xl pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[45vw] h-[45vw] rounded-full bg-purple-200/25 blur-3xl pointer-events-none" />
 
-          <h1 className="text-white font-headline text-2xl font-semibold leading-snug mb-3">
-            Git-style version control for relational databases.
-          </h1>
-          <p className="text-slate-400 font-body-md text-sm leading-relaxed mb-10">
-            Branch schemas and records, inspect row-level diffs, resolve conflicts, and govern merges with enforced DBA approvals.
+      {/* Main Authentication Card */}
+      <div className="w-full max-w-[460px] bg-white rounded-2xl shadow-xl shadow-indigo-950/[0.04] border border-slate-100 p-6 sm:p-8 relative z-10">
+        {/* Compact Logo & Brand Header */}
+        <div className="flex flex-col items-center text-center mb-4">
+          <div className="flex items-center gap-3 mb-2">
+            <VersionDbLogo size={36} className="bg-slate-900 shadow-sm" />
+            <span className="font-headline text-2xl font-bold tracking-tight text-slate-900">
+              VersionDB
+            </span>
+          </div>
+          <p className="font-body-sm text-xs sm:text-sm text-slate-500 max-w-xs leading-relaxed">
+            Git-style version control, copy-on-write branching, and RBAC governance for relational databases.
           </p>
-
-          <div className="space-y-5">
-            {[
-              { icon: 'account_tree', text: 'Isolated copy-on-write branches for schema & data' },
-              { icon: 'difference', text: 'Primary-key diffs and 3-way merge conflict detection' },
-              { icon: 'verified_user', text: 'Server-enforced RBAC with immutable audit trail' },
-            ].map(({ icon, text }) => (
-              <div key={icon} className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-slate-500 text-base mt-0.5 shrink-0">{icon}</span>
-                <span className="text-slate-400 font-body-sm text-xs leading-relaxed">{text}</span>
-              </div>
-            ))}
-          </div>
         </div>
 
-        <div className="text-slate-600 font-code-sm text-[11px] flex items-center justify-between">
-          <span>VersionDB</span>
+        {/* Tab switcher: Sign In / Register */}
+        <div className="grid grid-cols-2 p-1 bg-slate-100/90 rounded-xl mb-4 border border-slate-200/60">
           <button
             type="button"
-            onClick={() => setApiContractDrawerOpen(true)}
-            className="hover:text-slate-400 transition-colors"
+            id="auth-tab-signin"
+            onClick={() => {
+              setAuthMode('login');
+              setErrorMessage(null);
+            }}
+            className={`py-2 rounded-lg font-body-sm text-xs sm:text-sm font-semibold transition-all ${
+              authMode === 'login'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
           >
-            Backend Contract ↗
+            Sign In
+          </button>
+          <button
+            type="button"
+            id="auth-tab-register"
+            onClick={() => {
+              setAuthMode('register');
+              setErrorMessage(null);
+            }}
+            className={`py-2 rounded-lg font-body-sm text-xs sm:text-sm font-semibold transition-all ${
+              authMode === 'register'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            Register
           </button>
         </div>
-      </div>
 
-      {/* Right Panel — auth form */}
-      <div className="flex-1 flex items-center justify-center p-6 lg:p-12 bg-[#f8f9fc]">
-        <div className="w-full max-w-[400px]">
-          {/* Mobile logo */}
-          <div className="flex items-center gap-2 mb-8 lg:hidden">
-            <VersionDbLogo size={28} className="bg-slate-900" />
-            <span className="font-headline text-base font-semibold text-slate-900">VersionDB</span>
+        {/* Title shown only for login mode */}
+        {authMode === 'login' && (
+          <div className="mb-4">
+            <h2 className="font-headline text-lg sm:text-xl font-bold text-slate-900">
+              Welcome back
+            </h2>
+            <p className="font-body-sm text-xs text-slate-500 mt-1">
+              Enter your credentials to access your database workspaces.
+            </p>
+          </div>
+        )}
+
+        {/* Inline Error Banner */}
+        {errorMessage && (
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="mb-5 p-3 rounded-xl bg-red-50/90 border border-red-200 flex items-start gap-2.5 text-red-700"
+          >
+            <span className="material-symbols-outlined text-base mt-0.5 shrink-0 text-red-600">
+              error
+            </span>
+            <span className="font-body-sm text-xs leading-relaxed">{errorMessage}</span>
+          </div>
+        )}
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="space-y-3" noValidate>
+          <div>
+            <label
+              htmlFor="login-email"
+              className="block font-body-sm text-xs font-semibold text-slate-700 mb-1.5"
+            >
+              Email address
+            </label>
+            <input
+              id="login-email"
+              type="email"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="name@company.com"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 font-code-sm text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary focus:bg-white transition-all"
+            />
           </div>
 
-          {/* Tab switcher */}
-          <div className="flex items-center gap-0.5 p-1 bg-slate-100 rounded-lg mb-7 w-fit border border-slate-200">
-            <button
-              type="button"
-              id="auth-tab-signin"
-              onClick={() => { setAuthMode('login'); setErrorMessage(null); }}
-              className={`px-4 py-1.5 rounded-md font-body-sm text-xs font-medium transition-all ${
-                authMode === 'login'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              Sign In
-            </button>
-            <button
-              type="button"
-              id="auth-tab-register"
-              onClick={() => { setAuthMode('register'); setErrorMessage(null); }}
-              className={`px-4 py-1.5 rounded-md font-body-sm text-xs font-medium transition-all ${
-                authMode === 'register'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              Register
-            </button>
-          </div>
-
-          <h2 className="font-headline text-xl font-semibold text-slate-900 mb-1">
-            {authMode === 'login' ? 'Sign in to your workspace' : 'Create an account'}
-          </h2>
-          <p className="font-body-sm text-sm text-slate-500 mb-6">
-            {authMode === 'login'
-              ? 'Authenticate with your organization\'s VersionDB server.'
-              : 'Register a developer account. Credentials are verified by the backend.'}
-          </p>
-
-          {/* Backend config notice — compact */}
-          {!isBackendConfigured && (
-            <div className="mb-5 px-3.5 py-2.5 rounded-lg bg-amber-50 border border-amber-200 flex items-start gap-2">
-              <span className="material-symbols-outlined text-amber-500 text-sm mt-0.5 shrink-0">warning</span>
-              <p className="font-body-sm text-xs text-amber-800">
-                <span className="font-semibold">Backend not configured.</span> Set <code className="font-code-sm">VITE_API_BASE_URL</code> to connect an authentication server. Submissions will report this state.
-              </p>
-            </div>
-          )}
-          {isBackendConfigured && (
-            <div className="mb-5 px-3.5 py-2.5 rounded-lg bg-slate-50 border border-slate-200 flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-              <span className="font-code-sm text-[11px] text-slate-500 truncate">{apiBaseUrl}</span>
-            </div>
-          )}
-
-          {/* Inline error */}
-          {errorMessage && (
-            <div
-              role="alert"
-              aria-live="assertive"
-              className="mb-5 px-3.5 py-2.5 rounded-lg bg-red-50 border border-red-200 flex items-start gap-2 text-red-700"
-            >
-              <span className="material-symbols-outlined text-sm mt-0.5 shrink-0">error</span>
-              <span className="font-body-sm text-xs">{errorMessage}</span>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          {authMode === 'register' && (
             <div>
-              <label htmlFor="login-email" className="block font-body-sm text-xs font-medium text-slate-600 mb-1.5">
-                Email address
+              <label
+                htmlFor="register-username"
+                className="block font-body-sm text-xs font-semibold text-slate-700 mb-1.5"
+              >
+                Display Username
               </label>
               <input
-                id="login-email"
-                type="email"
-                autoComplete="email"
+                id="register-username"
+                type="text"
+                autoComplete="username"
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@company.com"
-                className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 font-code-sm text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="e.g. dev_jane"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 font-code-sm text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary focus:bg-white transition-all"
               />
             </div>
+          )}
 
-            {authMode === 'register' && (
-              <div>
-                <label htmlFor="register-username" className="block font-body-sm text-xs font-medium text-slate-600 mb-1.5">
-                  Username
-                </label>
-                <input
-                  id="register-username"
-                  type="text"
-                  autoComplete="username"
-                  required
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="e.g. dev_user"
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 font-code-sm text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
-                />
-              </div>
-            )}
-
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label htmlFor="login-password" className="block font-body-sm text-xs font-medium text-slate-600">
-                  Password{authMode === 'register' && <span className="text-slate-400 font-normal ml-1">(min 10 chars, letter + digit)</span>}
-                </label>
-                {authMode === 'login' && (
-                  <button
-                    type="button"
-                    onClick={() => navigateTo('forgot-password')}
-                    className="font-body-sm text-xs text-primary hover:underline"
-                  >
-                    Forgot password?
-                  </button>
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label
+                htmlFor="login-password"
+                className="block font-body-sm text-xs font-semibold text-slate-700"
+              >
+                Password
+                {authMode === 'register' && (
+                  <span className="text-slate-400 font-normal ml-1">
+                    (min 10 chars, letter + digit)
+                  </span>
                 )}
-              </div>
-              <div className="relative">
-                <input
-                  id="login-password"
-                  type={showPassword ? 'text' : 'password'}
-                  autoComplete={authMode === 'register' ? 'new-password' : 'current-password'}
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
-                  className="w-full rounded-lg border border-slate-200 bg-white pl-3.5 pr-10 py-2.5 font-code-sm text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
-                />
+              </label>
+              {authMode === 'login' && (
                 <button
                   type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                  onClick={() => navigateTo('forgot-password')}
+                  className="font-body-sm text-xs text-primary hover:underline font-medium"
                 >
-                  <span className="material-symbols-outlined text-base">
-                    {showPassword ? 'visibility_off' : 'visibility'}
-                  </span>
+                  Forgot password?
                 </button>
-              </div>
-            </div>
-
-            {authMode === 'register' && (
-              <div>
-                <label htmlFor="register-confirm-password" className="block font-body-sm text-xs font-medium text-slate-600 mb-1.5">
-                  Confirm password
-                </label>
-                <input
-                  id="register-confirm-password"
-                  type={showPassword ? 'text' : 'password'}
-                  autoComplete="new-password"
-                  required
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Re-enter password"
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 font-code-sm text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
-                />
-              </div>
-            )}
-
-            <button
-              type="submit"
-              id="auth-submit-btn"
-              disabled={isOperationPending}
-              className="w-full py-2.5 px-4 mt-1 rounded-lg bg-slate-900 text-white font-body-sm text-sm font-semibold hover:bg-slate-800 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
-            >
-              {isOperationPending ? (
-                <>
-                  <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
-                  {authMode === 'register' ? 'Creating account…' : 'Signing in…'}
-                </>
-              ) : (
-                authMode === 'register' ? 'Create Account' : 'Sign In'
               )}
-            </button>
-          </form>
+            </div>
+            <div className="relative">
+              <input
+                id="login-password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete={authMode === 'register' ? 'new-password' : 'current-password'}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-3 pr-10 py-2 font-code-sm text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary focus:bg-white transition-all"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+              >
+                <span className="material-symbols-outlined text-base">
+                  {showPassword ? 'visibility_off' : 'visibility'}
+                </span>
+              </button>
+            </div>
+          </div>
 
-          <p className="mt-5 text-center font-body-sm text-xs text-slate-500">
-            {authMode === 'login' ? "Don't have an account? " : 'Already registered? '}
-            <button
-              type="button"
-              onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setErrorMessage(null); }}
-              className="text-primary font-medium hover:underline"
-            >
-              {authMode === 'login' ? 'Create one →' : 'Sign in →'}
-            </button>
-          </p>
-        </div>
+          {authMode === 'register' && (
+            <div>
+              <label
+                htmlFor="register-confirm-password"
+                className="block font-body-sm text-xs font-semibold text-slate-700 mb-1.5"
+              >
+                Confirm password
+              </label>
+              <input
+                id="register-confirm-password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="new-password"
+                required
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Re-enter password"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 font-code-sm text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary focus:bg-white transition-all"
+              />
+            </div>
+          )}
+
+          <button
+            type="submit"
+            id="auth-submit-btn"
+            disabled={isOperationPending}
+            className="w-full py-2 px-4 mt-1 rounded-xl bg-slate-900 text-white font-body-sm text-xs sm:text-sm font-semibold hover:bg-slate-800 active:scale-[0.99] disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-sm"
+          >
+            {isOperationPending ? (
+              <>
+                <span className="material-symbols-outlined text-sm animate-spin">
+                  progress_activity
+                </span>
+                <span>{authMode === 'register' ? 'Creating account…' : 'Signing in…'}</span>
+              </>
+            ) : (
+              <span>{authMode === 'register' ? 'Create Account' : 'Sign In'}</span>
+            )}
+          </button>
+        </form>
+
+        {/* Footer switcher note */}
+        <p className="mt-4 text-center font-body-sm text-xs text-slate-500">
+          {authMode === 'login' ? "Don't have an account? " : 'Already registered? '}
+          <button
+            type="button"
+            onClick={() => {
+              setAuthMode(authMode === 'login' ? 'register' : 'login');
+              setErrorMessage(null);
+            }}
+            className="text-primary font-semibold hover:underline"
+          >
+            {authMode === 'login' ? 'Create one →' : 'Sign in →'}
+          </button>
+        </p>
       </div>
     </div>
   );
 };
-
 
 export const ForgotPasswordScreen: React.FC = () => {
   const { requestPasswordReset, isOperationPending, isBackendConfigured, navigateTo } =

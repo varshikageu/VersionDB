@@ -26,6 +26,7 @@ export function createApiRouter(c: Container): Router {
   api.post('/repos', ctl.repositories.create);
   api.get('/repos', ctl.repositories.list);
   api.get('/repos/:repoId', ctl.repositories.get);
+  api.delete('/repos/:repoId', ctl.repositories.delete);
   api.get('/repos/:repoId/branches', ctl.repositories.branches);
   api.post('/repos/:repoId/branches', ctl.repositories.createBranch);
   api.delete('/repos/:repoId/branches/:branchName', ctl.repositories.deleteBranch);
