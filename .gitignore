@@ -28,3 +28,9 @@ Thumbs.db
 
 # Temporary files
 *.tmp
+
+# Local VersionDB runtime data
+data/
+
+# Local backup files
+*.bak

@@ -980,12 +980,16 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
           signal,
         });
         if (res.ok && res.data) {
-          const rows = (res.data.records || []).map((r) => {
-            if (typeof r.data === 'object' && r.data !== null) {
-              return { id: r.id, ...r.data };
-            }
-            return { id: r.id, value: r.data };
-          });
+          // const rows = (res.data.records || []).map((r) => {
+          //   if (typeof r.data === 'object' && r.data !== null) {
+          //     return { id: r.id, ...r.data };
+          //   }
+          //   return { id: r.id, value: r.data };
+          // });
+          const rows = (res.data.records || []).map((r) => ({
+            id: r.id,
+            data: r.data,
+          }));
           return { ok: true, statusCode: res.statusCode, data: rows };
         }
         return {

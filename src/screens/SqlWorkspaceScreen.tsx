@@ -73,20 +73,35 @@ export const SqlWorkspaceScreen: React.FC = () => {
               Cancel
             </button>
           ) : (
+            // <button
+            //   type="button"
+            //   onClick={() => void executeActiveQuery()}
+            //   title="SQL execution is not yet implemented in the backend"
+            //   className="btn-secondary opacity-60 cursor-not-allowed"
+            //   disabled
+            // >
+            //   <span className="material-symbols-outlined text-[15px]">play_arrow</span>
+            //   Run Query
+            // </button>
+
             <button
               type="button"
               onClick={() => void executeActiveQuery()}
-              title={
+               title={
                 !activeRepo
                   ? 'Connect or select a repository to run SQL queries'
                   : 'Execute SQL query against active branch snapshot'
               }
               className={`btn-primary ${!activeRepo ? 'opacity-60 cursor-not-allowed' : ''}`}
               disabled={!activeRepo}
-            >
+              title="Execute SQL query"
+              className="btn-primary"
+              disabled={!activeRepo || !activeBranch || !activeTab?.sql?.trim() || isQueryExecuting}
+            
               <span className="material-symbols-outlined text-[15px]">play_arrow</span>
               Run Query
             </button>
+
           )}
           {isDdlOrDmlStatement && (
             <button
@@ -214,11 +229,10 @@ export const SqlWorkspaceScreen: React.FC = () => {
                 {queryTabs.map((tab) => (
                   <div
                     key={tab.id}
-                    className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-[12px] font-mono cursor-pointer transition-all ${
-                      tab.id === activeQueryTabId
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-[12px] font-mono cursor-pointer transition-all ${tab.id === activeQueryTabId
                         ? 'bg-white text-[#2563eb] font-semibold shadow-xs border border-[#e2e5f6]'
                         : 'text-[#5263a0] hover:text-[#10172a]'
-                    }`}
+                      }`}
                     onClick={() => setActiveQueryTabId(tab.id)}
                   >
                     <span>{tab.title}</span>
@@ -272,11 +286,10 @@ export const SqlWorkspaceScreen: React.FC = () => {
                     key={tabKey}
                     type="button"
                     onClick={() => setResultSubTab(tabKey)}
-                    className={`px-3 py-1 rounded-lg text-[11px] font-mono uppercase font-semibold transition-all ${
-                      resultSubTab === tabKey
+                    className={`px-3 py-1 rounded-lg text-[11px] font-mono uppercase font-semibold transition-all ${resultSubTab === tabKey
                         ? 'bg-white text-[#2563eb] shadow-xs border border-[#e2e5f6]'
                         : 'text-[#5263a0] hover:text-[#10172a]'
-                    }`}
+                      }`}
                   >
                     {tabKey === 'rows'
                       ? `Result Rows (${lastQueryResult?.rowCount ?? 0})`

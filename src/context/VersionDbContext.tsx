@@ -142,6 +142,7 @@ interface VersionDbContextValue {
     rowSnapshot?: Record<string, any>
   ) => Promise<ServiceOperationResult<StagedRowMutation>>;
   stageInsertRow: (
+
     table: string,
     newRow: Record<string, any>
   ) => Promise<ServiceOperationResult<StagedRowMutation>>;
