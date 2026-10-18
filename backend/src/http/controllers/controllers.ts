@@ -12,12 +12,14 @@ const actorOf = (req: Request): Actor => {
 };
 
 export function createControllers(c: Container) {
-  const { auth, repositories, members, records, commits, history } = c.services;
+  const { auth, repositories, members, records, commits, history, sql } = c.services;
 
   return {
     auth: {
       register: asyncHandler(async (req: Request, res: Response) => {
-        res.status(201).json({ user: await auth.register(parse(s.registerBody, req.body), req.ip) });
+        res.status(201).json({
+          user: await auth.register(parse(s.registerBody, req.body), req.ip),
+        });
       }),
       login: asyncHandler(async (req: Request, res: Response) => {
         res.json(await auth.login(parse(s.loginBody, req.body), req.ip));
@@ -31,6 +33,35 @@ export function createControllers(c: Container) {
       }),
       me: asyncHandler(async (req: Request, res: Response) => {
         res.json({ user: await auth.me(actorOf(req).userId) });
+      }),
+    },
+
+    sql: {
+      execute: asyncHandler(async (req: Request, res: Response) => {
+        const body = req.body as {
+          branch?: string;
+          sql?: string;
+        };
+
+        if (
+          typeof req.params.repoId !== 'string' ||
+          typeof body.branch !== 'string' ||
+          typeof body.sql !== 'string'
+        ) {
+          res.status(400).json({
+            error: 'repoId, branch, and sql are required.',
+          });
+          return;
+        }
+
+        const result = await sql.execute(
+          actorOf(req),
+          req.params.repoId,
+          body.branch,
+          body.sql,
+        );
+
+        res.json(result);
       }),
     },
 
@@ -125,7 +156,7 @@ export function createControllers(c: Container) {
         const p = parse(s.branchParams, req.params);
         res.status(201).json({ commit: await commits.create(actorOf(req), p.repoId, p.branch, parse(s.commitBody, req.body).message) });
       }),
-            rollback: asyncHandler(async (req: Request, res: Response) => {
+      rollback: asyncHandler(async (req: Request, res: Response) => {
         const p = parse(s.branchParams, req.params);
         const body = parse(s.rollbackBody, req.body);
 

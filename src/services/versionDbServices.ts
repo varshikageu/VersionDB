@@ -969,14 +969,15 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
     },
 
     sql: {
+
       async executeQuery(
         payload: {
           repositoryId: string;
           branch: string;
           sql: string;
         },
-        _sessionToken?: string | null,
-        _signal?: AbortSignal
+        sessionToken?: string | null,
+        signal?: AbortSignal
       ): Promise<ServiceOperationResult<QueryExecutionResult>> {
         if (!payload.sql.trim()) {
           return {
@@ -985,6 +986,7 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
             error: 'SQL statement cannot be empty.',
           };
         }
+
         if (!client.isConfigured()) {
           return {
             ok: false,
@@ -992,14 +994,36 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
             error: 'Backend API is not configured (VITE_API_BASE_URL is empty).',
           };
         }
+
+        const res = await client.request<QueryExecutionResult>(
+          `/api/repos/${payload.repositoryId}/sql/execute`,
+          {
+            method: 'POST',
+            sessionToken,
+            signal,
+            body: {
+              branch: payload.branch,
+              sql: payload.sql,
+            },
+          }
+        );
+
+        if (res.ok && res.data) {
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: res.data,
+          };
+        }
+
         return {
           ok: false,
-          statusCode: 501,
-          errorCode: 'NOT_IMPLEMENTED',
-          error:
-            'SQL execution is not implemented in the VersionDB backend. Endpoints for executing direct SQL queries are not available. VersionDB manages versioned state via record collections and commits (see Records & Commits API).',
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
         };
       },
+
 
       async fetchTableRows(
         payload: {

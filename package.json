@@ -13,7 +13,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx --test src/services/__tests__/versionDbServices.test.ts backend/src/__tests__/auth-error-handling.test.ts backend/src/__tests__/branch-creation.test.ts backend/src/__tests__/rollback.test.ts",
+    "test": "tsx --test src/services/__tests__/versionDbServices.test.ts backend/src/__tests__/auth-error-handling.test.ts backend/src/__tests__/branch-creation.test.ts backend/src/__tests__/rollback.test.ts backend/src/__tests__/sql-executor.test.ts",
     "test:backend": "tsx --test backend/src/__tests__/auth-error-handling.test.ts backend/src/__tests__/branch-creation.test.ts backend/src/__tests__/rollback.test.ts"
   },
   "dependencies": {
@@ -32,6 +32,7 @@
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
+    "node-sql-parser": "^5.4.0",
     "pg": "^8.23.1",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",

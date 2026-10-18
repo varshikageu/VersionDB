@@ -36,6 +36,7 @@ export function createApiRouter(c: Container): Router {
   api.delete('/repos/:repoId/members/:userId', ctl.members.remove);
 
   // records: read committed data, stage edits in the caller's working state
+  api.post('/repos/:repoId/sql/execute', ctl.sql.execute);
   api.get('/repos/:repoId/branches/:branch/records', ctl.records.readBranch);
   api.get('/repos/:repoId/branches/:branch/records/:collection/:recordId', ctl.records.getOne);
   api.put('/repos/:repoId/branches/:branch/records/:collection/:recordId', ctl.records.put);

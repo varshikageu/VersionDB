@@ -110,6 +110,7 @@ describe('VersionDB Express Backend Async Error Handling & Rejection Regression'
           release: async () => {},
           purgeExpired: async () => 0,
         } as any,
+        sql: {} as any,
       },
     };
 

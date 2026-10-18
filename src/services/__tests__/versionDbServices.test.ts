@@ -486,13 +486,13 @@ describe('VersionDB Production Service Architecture & Error Handling', () => {
     assert.equal(rollbackRes.ok, false);
     assert.ok(rollbackRes.error?.includes('not implemented'));
 
-    const sqlRes = await services.sql.executeQuery(
-      { repositoryId: 'repo-1', branch: 'main', sql: 'SELECT 1;' },
-      'token-123'
-    );
-    assert.equal(sqlRes.ok, false);
-    assert.equal(sqlRes.errorCode, 'NOT_IMPLEMENTED');
-    assert.ok(sqlRes.error?.includes('not implemented'));
+    // const sqlRes = await services.sql.executeQuery(
+    //   { repositoryId: 'repo-1', branch: 'main', sql: 'SELECT 1;' },
+    //   'token-123'
+    // );
+    // assert.equal(sqlRes.ok, false);
+    // assert.equal(sqlRes.errorCode, 'NOT_IMPLEMENTED');
+    // assert.ok(sqlRes.error?.includes('not implemented'));
   });
 });
 
