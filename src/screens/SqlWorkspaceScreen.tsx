@@ -73,35 +73,20 @@ export const SqlWorkspaceScreen: React.FC = () => {
               Cancel
             </button>
           ) : (
-            // <button
-            //   type="button"
-            //   onClick={() => void executeActiveQuery()}
-            //   title="SQL execution is not yet implemented in the backend"
-            //   className="btn-secondary opacity-60 cursor-not-allowed"
-            //   disabled
-            // >
-            //   <span className="material-symbols-outlined text-[15px]">play_arrow</span>
-            //   Run Query
-            // </button>
-
             <button
               type="button"
               onClick={() => void executeActiveQuery()}
-               title={
+              title={
                 !activeRepo
                   ? 'Connect or select a repository to run SQL queries'
                   : 'Execute SQL query against active branch snapshot'
               }
-              className={`btn-primary ${!activeRepo ? 'opacity-60 cursor-not-allowed' : ''}`}
-              disabled={!activeRepo}
-              title="Execute SQL query"
-              className="btn-primary"
+              className={`btn-primary ${!activeRepo || !activeBranch || !activeTab?.sql?.trim() ? 'opacity-60 cursor-not-allowed' : ''}`}
               disabled={!activeRepo || !activeBranch || !activeTab?.sql?.trim() || isQueryExecuting}
-            
+            >
               <span className="material-symbols-outlined text-[15px]">play_arrow</span>
               Run Query
             </button>
-
           )}
           {isDdlOrDmlStatement && (
             <button
