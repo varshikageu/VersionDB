@@ -349,7 +349,6 @@ function buildMockContainer(env: Env, logger: Logger): Container {
         complete: async () => { },
         release: async () => { },
       } as any,
-      sql: {} as any,
     },
   };
 
