@@ -268,6 +268,7 @@ function buildMockContainer(env: Env, logger: Logger): Container {
       repositories: mockRepositoryService,
       history: {} as any,
       records: {} as any,
+      sql: {} as any,
       commits: {
         rollback: async () => { throw new Error('not used in isolation tests'); },
       } as any,
