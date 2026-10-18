@@ -241,11 +241,27 @@ export const TableDataScreen: React.FC = () => {
               <tbody>
                 {rows.map((row, index) => (
                   <tr key={String(row.id ?? index)}>
-                    {activeTable.columns.map((column) => (
-                      <td key={column.name} className="text-[#10172a]">
-                        {String(row[column.name] ?? 'NULL')}
-                      </td>
-                    ))}
+
+                    {activeTable.columns.map((column) => {
+                      const value =
+                        column.name === 'data'
+                          ? row.data
+                          : row[column.name];
+
+                      return (
+                        <td
+                          key={column.name}
+                          className="text-[#10172a] whitespace-pre-wrap"
+                        >
+                          {value == null
+                            ? 'NULL'
+                            : typeof value === 'object'
+                              ? JSON.stringify(value, null, 2)
+                              : String(value)}
+                        </td>
+                      );
+                    })}
+
                   </tr>
                 ))}
               </tbody>
