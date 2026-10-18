@@ -22,6 +22,13 @@ export function createApiRouter(c: Container): Router {
   // --- everything below requires a valid access token ---
   api.use(requireAuth);
 
+  // admin-controlled user management & audit logs
+  api.get('/admin/users', ctl.admin.listUsers);
+  api.post('/admin/users', ctl.admin.createUser);
+  api.patch('/admin/users/:userId', ctl.admin.updateUser);
+  api.post('/admin/users/:userId/reset-password', ctl.admin.resetPassword);
+  api.get('/admin/audit-logs', ctl.admin.auditLogs);
+
   // repositories, membership, branch listing
   api.post('/repos', ctl.repositories.create);
   api.get('/repos', ctl.repositories.list);

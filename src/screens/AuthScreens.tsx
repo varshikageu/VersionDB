@@ -1,6 +1,39 @@
 import React, { useState } from 'react';
 import { VersionDbLogo } from '../components/common/VersionDbLogo';
 import { useVersionDb } from '../context/VersionDbContext';
+import { UserRole } from '../types/versiondb';
+
+const PORTAL_OPTIONS: Array<{
+  role: UserRole;
+  title: string;
+  icon: string;
+  desc: string;
+}> = [
+  {
+    role: 'Admin',
+    title: 'Admin Portal',
+    icon: 'admin_panel_settings',
+    desc: 'System governance, user provisioning & audit logs',
+  },
+  {
+    role: 'Developer',
+    title: 'Developer Portal',
+    icon: 'terminal',
+    desc: 'Branching, SQL workspace, staging & migrations',
+  },
+  {
+    role: 'Reviewer',
+    title: 'Reviewer Portal',
+    icon: 'rate_review',
+    desc: 'Review queue, diff inspection & approvals',
+  },
+  {
+    role: 'Viewer',
+    title: 'Viewer Portal',
+    icon: 'visibility',
+    desc: 'Read-only schema & commit timeline exploration',
+  },
+];
 
 export const LoginScreen: React.FC = () => {
   const {
@@ -11,12 +44,12 @@ export const LoginScreen: React.FC = () => {
   } = useVersionDb();
 
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [selectedPortal, setSelectedPortal] = useState<UserRole>('Developer');
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -54,16 +87,11 @@ export const LoginScreen: React.FC = () => {
 
       const result = await registerWithBackend(trimmedEmail, trimmedUser, password);
       if (!result.ok) {
-        // If the error message starts with "Account created." it means registration
-        // succeeded but auto-login failed — show it inline without an extra toast
-        // (signInWithBackend already pushed a toast for this case).
         setErrorMessage(
           result.error ||
             'Registration failed. The VersionDB authentication backend is not configured or unreachable.'
         );
       }
-      // On success (result.ok === true), the context already navigated to #/overview.
-      // The component will unmount when authState.isAuthenticated becomes true.
       return;
     }
 
@@ -72,7 +100,8 @@ export const LoginScreen: React.FC = () => {
       return;
     }
 
-    const result = await signInWithBackend(trimmedEmail, password);
+    // Authenticate with backend and verify portal role
+    const result = await signInWithBackend(trimmedEmail, password, selectedPortal);
     if (!result.ok) {
       setErrorMessage(
         result.error ||
@@ -88,7 +117,7 @@ export const LoginScreen: React.FC = () => {
       <div className="absolute bottom-[-10%] right-[-10%] w-[45vw] h-[45vw] rounded-full bg-purple-200/25 blur-3xl pointer-events-none" />
 
       {/* Main Authentication Card */}
-      <div className="w-full max-w-[460px] bg-white rounded-2xl shadow-xl shadow-indigo-950/[0.04] border border-slate-100 p-6 sm:p-8 relative z-10">
+      <div className="w-full max-w-[500px] bg-white rounded-2xl shadow-xl shadow-indigo-950/[0.04] border border-slate-100 p-6 sm:p-8 relative z-10">
         {/* Compact Logo & Brand Header */}
         <div className="flex flex-col items-center text-center mb-4">
           <div className="flex items-center gap-3 mb-2">
@@ -97,12 +126,12 @@ export const LoginScreen: React.FC = () => {
               VersionDB
             </span>
           </div>
-          <p className="font-body-sm text-xs sm:text-sm text-slate-500 max-w-xs leading-relaxed">
+          <p className="font-body-sm text-xs sm:text-sm text-slate-500 max-w-sm leading-relaxed">
             Git-style version control, copy-on-write branching, and RBAC governance for relational databases.
           </p>
         </div>
 
-        {/* Tab switcher: Sign In / Register */}
+        {/* Tab switcher: Sign In / Registration Notice */}
         <div className="grid grid-cols-2 p-1 bg-slate-100/90 rounded-xl mb-4 border border-slate-200/60">
           <button
             type="button"
@@ -132,18 +161,74 @@ export const LoginScreen: React.FC = () => {
                 : 'text-slate-500 hover:text-slate-700'
             }`}
           >
-            Register
+            Self-Register
           </button>
         </div>
 
-        {/* Title shown only for login mode */}
+        {/* Portal / Role Selector on Sign In */}
         {authMode === 'login' && (
           <div className="mb-4">
-            <h2 className="font-headline text-lg sm:text-xl font-bold text-slate-900">
-              Welcome back
-            </h2>
-            <p className="font-body-sm text-xs text-slate-500 mt-1">
-              Enter your credentials to access your database workspaces.
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block font-body-sm text-xs font-semibold text-slate-700">
+                Target Portal / Role Environment
+              </label>
+              <span className="text-[10px] text-slate-400 font-mono">Backend Verified</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {PORTAL_OPTIONS.map((opt) => {
+                const isSelected = selectedPortal === opt.role;
+                return (
+                  <button
+                    key={opt.role}
+                    type="button"
+                    onClick={() => {
+                      setSelectedPortal(opt.role);
+                      setErrorMessage(null);
+                    }}
+                    className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                      isSelected
+                        ? 'border-indigo-600 bg-indigo-50/60 shadow-xs'
+                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span
+                        className={`material-symbols-outlined text-base ${
+                          isSelected ? 'text-indigo-600 font-bold' : 'text-slate-500'
+                        }`}
+                      >
+                        {opt.icon}
+                      </span>
+                      <span
+                        className={`text-xs font-semibold ${
+                          isSelected ? 'text-indigo-950 font-bold' : 'text-slate-800'
+                        }`}
+                      >
+                        {opt.title}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 line-clamp-1 leading-tight">
+                      {opt.desc}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="font-body-sm text-[11px] text-slate-500 mt-2 bg-slate-50 border border-slate-200/60 p-2 rounded-lg leading-relaxed">
+              <span className="font-semibold text-slate-700">Role Notice:</span> Selecting a portal indicates your target environment; it does not grant privileges. The backend strictly authenticates and validates your assigned role before granting access.
+            </p>
+          </div>
+        )}
+
+        {/* Registration policy explanation banner */}
+        {authMode === 'register' && (
+          <div className="mb-4 p-3 bg-amber-50/90 border border-amber-200/80 rounded-xl text-amber-900 text-xs leading-relaxed space-y-1">
+            <div className="flex items-center gap-1.5 font-semibold text-amber-950">
+              <span className="material-symbols-outlined text-[15px] text-amber-600">admin_panel_settings</span>
+              <span>Admin-Controlled Account Provisioning</span>
+            </div>
+            <p className="text-[11px] text-amber-800">
+              VersionDB uses Administrator-controlled provisioning for Developer, Reviewer, and Admin accounts. Public self-registration only creates a restricted default account and never grants elevated privileges.
             </p>
           </div>
         )}
@@ -153,7 +238,7 @@ export const LoginScreen: React.FC = () => {
           <div
             role="alert"
             aria-live="assertive"
-            className="mb-5 p-3 rounded-xl bg-red-50/90 border border-red-200 flex items-start gap-2.5 text-red-700"
+            className="mb-4 p-3 rounded-xl bg-red-50/90 border border-red-200 flex items-start gap-2.5 text-red-700"
           >
             <span className="material-symbols-outlined text-base mt-0.5 shrink-0 text-red-600">
               error
@@ -276,34 +361,54 @@ export const LoginScreen: React.FC = () => {
             type="submit"
             id="auth-submit-btn"
             disabled={isOperationPending}
-            className="w-full py-2 px-4 mt-1 rounded-xl bg-slate-900 text-white font-body-sm text-xs sm:text-sm font-semibold hover:bg-slate-800 active:scale-[0.99] disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-sm"
+            className="w-full py-2.5 px-4 mt-2 rounded-xl bg-slate-900 text-white font-body-sm text-xs sm:text-sm font-semibold hover:bg-slate-800 active:scale-[0.99] disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-sm"
           >
             {isOperationPending ? (
               <>
                 <span className="material-symbols-outlined text-sm animate-spin">
                   progress_activity
                 </span>
-                <span>{authMode === 'register' ? 'Creating account…' : 'Signing in…'}</span>
+                <span>{authMode === 'register' ? 'Creating restricted account…' : `Entering ${selectedPortal} Portal…`}</span>
               </>
             ) : (
-              <span>{authMode === 'register' ? 'Create Account' : 'Sign In'}</span>
+              <span>
+                {authMode === 'register' ? 'Create Restricted Account' : `Sign In to ${selectedPortal} Portal`}
+              </span>
             )}
           </button>
         </form>
 
-        {/* Footer switcher note */}
+        {/* Footer info note */}
         <p className="mt-4 text-center font-body-sm text-xs text-slate-500">
-          {authMode === 'login' ? "Don't have an account? " : 'Already registered? '}
-          <button
-            type="button"
-            onClick={() => {
-              setAuthMode(authMode === 'login' ? 'register' : 'login');
-              setErrorMessage(null);
-            }}
-            className="text-primary font-semibold hover:underline"
-          >
-            {authMode === 'login' ? 'Create one →' : 'Sign in →'}
-          </button>
+          {authMode === 'login' ? (
+            <>
+              Need account provisioning?{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('register');
+                  setErrorMessage(null);
+                }}
+                className="text-primary font-semibold hover:underline"
+              >
+                View registration policy →
+              </button>
+            </>
+          ) : (
+            <>
+              Already have provisioned credentials?{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('login');
+                  setErrorMessage(null);
+                }}
+                className="text-primary font-semibold hover:underline"
+              >
+                Sign In →
+              </button>
+            </>
+          )}
         </p>
       </div>
     </div>

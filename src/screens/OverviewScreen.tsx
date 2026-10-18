@@ -8,6 +8,8 @@ import { useVersionDb } from '../context/VersionDbContext';
 
 export const OverviewScreen: React.FC = () => {
   const {
+    currentUser,
+    roleCapabilities,
     activeRepo,
     activeBranch,
     branches,
@@ -32,6 +34,8 @@ export const OverviewScreen: React.FC = () => {
   const unresolvedConflicts = conflicts.filter((c) => !c.resolved);
   const stagedCount = stagedRowMutations.length + stagedDdlChanges.length;
 
+  const role = currentUser.role;
+
   return (
     <div className="vdb-page">
       {/* Header */}
@@ -41,33 +45,74 @@ export const OverviewScreen: React.FC = () => {
             <span>{activeRepo ? activeRepo.name : 'No Repository'}</span>
             <span className="text-[#c5c9e4]">/</span>
             <span className="text-[#2563eb] font-semibold">{activeBranch || 'No Branch'}</span>
+            <span className="text-[#c5c9e4]">·</span>
+            <span className="badge badge-neutral text-[10px] uppercase font-mono">{role}</span>
           </div>
           <h1 className="text-[22px] font-bold text-[#10172a] tracking-tight">
-            Database Overview
+            {role === 'Admin'
+              ? 'Administrator Overview'
+              : role === 'Reviewer'
+              ? 'Reviewer Dashboard'
+              : role === 'Viewer'
+              ? 'Repository Explorer (Read-Only)'
+              : 'Database Developer Overview'}
           </h1>
           <p className="text-[13px] text-[#5263a0] mt-0.5">
-            Version control dashboard for {activeRepo?.name ?? 'your database'}
+            {role === 'Admin'
+              ? `Platform administration, repository access governance, and schema health for ${activeRepo?.name ?? 'VersionDB'}`
+              : role === 'Reviewer'
+              ? `Review queue, branch comparisons, and merge approvals for ${activeRepo?.name ?? 'your database'}`
+              : role === 'Viewer'
+              ? `Browse committed tables, schema definitions, and branch history in read-only mode`
+              : `Version control dashboard, SQL workspace, and branch staging for ${activeRepo?.name ?? 'your database'}`}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => navigateTo('sql-workspace')}
-            className="btn-secondary"
-          >
-            <span className="material-symbols-outlined text-[15px] text-[#2563eb]">terminal</span>
-            SQL Workspace
-          </button>
-          <button
-            type="button"
-            onClick={() => activeRepo ? setCreateBranchModalOpen(true) : setCreateRepoModalOpen(true)}
-            className="btn-primary"
-          >
-            <span className="material-symbols-outlined text-[15px]">
-              {activeRepo ? 'call_split' : 'add'}
-            </span>
-            {activeRepo ? 'Create Branch' : 'Register Repository'}
-          </button>
+          {role === 'Admin' && (
+            <button
+              type="button"
+              onClick={() => navigateTo('members-and-permissions')}
+              className="btn-secondary"
+            >
+              <span className="material-symbols-outlined text-[15px] text-[#2563eb]">admin_panel_settings</span>
+              User Management
+            </button>
+          )}
+
+          {role === 'Reviewer' && (
+            <button
+              type="button"
+              onClick={() => navigateTo('merge-requests')}
+              className="btn-primary"
+            >
+              <span className="material-symbols-outlined text-[15px]">rate_review</span>
+              Review Queue ({openMrs.length})
+            </button>
+          )}
+
+          {roleCapabilities.canExecuteSelect && (
+            <button
+              type="button"
+              onClick={() => navigateTo('sql-workspace')}
+              className="btn-secondary"
+            >
+              <span className="material-symbols-outlined text-[15px] text-[#2563eb]">terminal</span>
+              SQL Workspace
+            </button>
+          )}
+
+          {roleCapabilities.canCreateBranch && (
+            <button
+              type="button"
+              onClick={() => activeRepo ? setCreateBranchModalOpen(true) : setCreateRepoModalOpen(true)}
+              className="btn-primary"
+            >
+              <span className="material-symbols-outlined text-[15px]">
+                {activeRepo ? 'call_split' : 'add'}
+              </span>
+              {activeRepo ? 'Create Branch' : 'Register Repository'}
+            </button>
+          )}
         </div>
       </div>
 

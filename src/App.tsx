@@ -42,9 +42,11 @@ import {
 } from './screens/StatusScreens';
 import { TableDataScreen } from './screens/TableDataScreen';
 import { TimeMachineScreen } from './screens/TimeMachineScreen';
-
+import { AdminDashboardScreen } from './screens/AdminDashboardScreen';
+import { ReviewerDashboardScreen } from './screens/ReviewerDashboardScreen';
+import { ViewerDashboardScreen } from './screens/ViewerDashboardScreen';
 const VersionDbShell: React.FC = () => {
-  const { activeScreen, authState } = useVersionDb();
+  const { activeScreen, authState, currentUser } = useVersionDb();
 
   if (authState.isInitialLoading) {
     return (
@@ -101,7 +103,16 @@ const VersionDbShell: React.FC = () => {
   const renderScreen = () => {
     switch (activeScreen) {
       case 'overview':
+        if (currentUser.role === 'Admin') return <AdminDashboardScreen />;
+        if (currentUser.role === 'Reviewer') return <ReviewerDashboardScreen />;
+        if (currentUser.role === 'Viewer') return <ViewerDashboardScreen />;
         return <OverviewScreen />;
+      case 'admin-dashboard':
+        return <AdminDashboardScreen />;
+      case 'reviewer-dashboard':
+        return <ReviewerDashboardScreen />;
+      case 'viewer-dashboard':
+        return <ViewerDashboardScreen />;
       case 'workspaces':
         return <WorkspacesScreen />;
       case 'onboarding':

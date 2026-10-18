@@ -4,8 +4,12 @@ import type { Queryable } from './pool';
 
 export class PgUserRepo implements UserRepo {
   constructor(private db: Queryable) {}
-  async create(u: { email: string; username: string; passwordHash: string }) {
-    const r = await this.db.query('INSERT INTO users (email, username, password_hash) VALUES ($1, $2, $3) RETURNING *', [u.email, u.username, u.passwordHash]);
+  async create(u: { email: string; username: string; passwordHash: string; globalRole?: import('../../domain/types').GlobalRole }) {
+    const role = u.globalRole ?? 'user';
+    const r = await this.db.query(
+      'INSERT INTO users (email, username, password_hash, global_role) VALUES ($1, $2, $3, $4) RETURNING *',
+      [u.email, u.username, u.passwordHash, role]
+    );
     return mapUser(r.rows[0]);
   }
   async findById(id: string) {
@@ -19,6 +23,41 @@ export class PgUserRepo implements UserRepo {
   async findByIdentifier(identifier: string) {
     const r = await this.db.query('SELECT * FROM users WHERE email = lower($1) OR lower(username) = lower($1) LIMIT 1', [identifier]);
     return r.rows[0] ? mapUser(r.rows[0]) : null;
+  }
+  async list() {
+    const r = await this.db.query('SELECT * FROM users ORDER BY created_at DESC');
+    return r.rows.map(mapUser);
+  }
+  async update(id: string, patch: { username?: string; globalRole?: import('../../domain/types').GlobalRole; disabled?: boolean }) {
+    const sets: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
+
+    if (patch.username !== undefined) {
+      sets.push(`username = $${idx++}`);
+      values.push(patch.username);
+    }
+    if (patch.globalRole !== undefined) {
+      sets.push(`global_role = $${idx++}`);
+      values.push(patch.globalRole);
+    }
+    if (patch.disabled !== undefined) {
+      sets.push(`disabled = $${idx++}`);
+      values.push(patch.disabled);
+    }
+
+    if (sets.length === 0) {
+      return this.findById(id);
+    }
+
+    values.push(id);
+    const sql = `UPDATE users SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`;
+    const r = await this.db.query(sql, values);
+    return r.rows[0] ? mapUser(r.rows[0]) : null;
+  }
+  async setPassword(id: string, passwordHash: string) {
+    const r = await this.db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [passwordHash, id]);
+    return (r.rowCount ?? 0) > 0;
   }
 }
 

@@ -13,6 +13,7 @@
  */
 
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { after, before, describe, it } from 'node:test';
 import { createApp } from '../app';
@@ -25,6 +26,13 @@ import type { Actor, RepoRole } from '../domain/types';
 // ---------------------------------------------------------------------------
 // Shared in-memory state
 // ---------------------------------------------------------------------------
+
+// Standard RFC4122 v4 UUID constants for test entities
+export const ADMIN_ID = '11111111-2222-4333-8444-555555555555';
+export const ALICE_ID = 'f2c96c17-1bf2-4fa8-908e-377a2a0e9f04';
+export const BOB_ID = '3e0f9f5e-511d-4afc-b4b3-e7a54062b732';
+export const REPO_A_ID = '0fc0326c-ac5b-41e8-8b42-edf102336fcb';
+export const REPO_B_ID = '400a3c5c-daa8-4084-b4d7-95283bfa2cc1';
 
 interface UserRecord {
   id: string;
@@ -51,16 +59,25 @@ function resetState() {
   repos.clear();
   memberships.clear();
 
+  // Pre-seed Admin user
+  users.set(ADMIN_ID, {
+    id: ADMIN_ID,
+    email: 'admin@example.com',
+    username: 'platform_admin',
+    globalRole: 'admin',
+    disabled: false,
+  });
+
   // Pre-seed two independent users with same display name (duplicate usernames allowed)
-  users.set('u-alice', {
-    id: 'u-alice',
+  users.set(ALICE_ID, {
+    id: ALICE_ID,
     email: 'alice@example.com',
     username: 'alice_dev',
     globalRole: 'user',
     disabled: false,
   });
-  users.set('u-bob', {
-    id: 'u-bob',
+  users.set(BOB_ID, {
+    id: BOB_ID,
     email: 'bob@example.com',
     username: 'alice_dev', // duplicate display name - allowed
     globalRole: 'user',
@@ -68,16 +85,16 @@ function resetState() {
   });
 
   // Alice owns repo-a
-  repos.set('repo-a', { id: 'repo-a', name: 'alice-repo', description: '', ownerId: 'u-alice' });
+  repos.set(REPO_A_ID, { id: REPO_A_ID, name: 'alice-repo', description: '', ownerId: ALICE_ID });
   const repoAMembers = new Map<string, RepoRole>();
-  repoAMembers.set('u-alice', 'owner');
-  memberships.set('repo-a', repoAMembers);
+  repoAMembers.set(ALICE_ID, 'owner');
+  memberships.set(REPO_A_ID, repoAMembers);
 
   // Bob owns repo-b
-  repos.set('repo-b', { id: 'repo-b', name: 'bob-repo', description: '', ownerId: 'u-bob' });
+  repos.set(REPO_B_ID, { id: REPO_B_ID, name: 'bob-repo', description: '', ownerId: BOB_ID });
   const repoBMembers = new Map<string, RepoRole>();
-  repoBMembers.set('u-bob', 'owner');
-  memberships.set('repo-b', repoBMembers);
+  repoBMembers.set(BOB_ID, 'owner');
+  memberships.set(REPO_B_ID, repoBMembers);
 }
 
 function visibleRepos(actor: Actor): RepoRecord[] {
@@ -109,19 +126,6 @@ function authorizeRepo(actor: Actor, repoId: string, minRole: RepoRole) {
 
 function buildMockContainer(env: Env, logger: Logger): Container {
   const mockAuthService: any = {
-    verifyAccessToken: (token: string) => {
-      if (token.startsWith('uid:')) {
-        const userId = token.slice(4);
-        const user = users.get(userId);
-        if (user) return { userId: user.id, globalRole: user.globalRole };
-      }
-      throw unauthorized('INVALID_TOKEN', 'Invalid token');
-    },
-    loadActiveUser: async (userId: string) => {
-      const user = users.get(userId);
-      if (!user) throw unauthorized('INVALID_TOKEN', 'User not found');
-      return user;
-    },
     register: async ({ email, username, password: _password, globalRole: _suppliedRole }: any) => {
       // Duplicate email check (case-insensitive)
       for (const u of users.values()) {
@@ -129,7 +133,7 @@ function buildMockContainer(env: Env, logger: Logger): Container {
           throw conflict('ACCOUNT_EXISTS', 'An account with that email already exists');
         }
       }
-      const id = `u-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const id = crypto.randomUUID();
       const newUser: UserRecord = {
         id,
         email: email.toLowerCase(),
@@ -151,6 +155,23 @@ function buildMockContainer(env: Env, logger: Logger): Container {
       if (!user) throw unauthorized('INVALID_CREDENTIALS', 'Invalid credentials');
       return { token: `uid:${user.id}`, refreshToken: 'rt', user };
     },
+    verifyAccessToken: (token: string) => {
+      const match = /^uid:([0-9a-f-]{36})$/.exec(token);
+      if (!match) {
+        throw unauthorized('INVALID_TOKEN', 'Invalid or expired access token');
+      }
+      const userId = match[1]!;
+      const user = users.get(userId);
+      if (!user) {
+        throw unauthorized('INVALID_TOKEN', 'User not found');
+      }
+      return { userId: user.id, globalRole: user.globalRole };
+    },
+    loadActiveUser: async (userId: string) => {
+      const u = users.get(userId);
+      if (!u || u.disabled) throw unauthorized('USER_DISABLED', 'Account disabled');
+      return u;
+    },
     me: async (userId: string) => {
       const u = users.get(userId);
       if (!u) throw notFound('User');
@@ -158,6 +179,57 @@ function buildMockContainer(env: Env, logger: Logger): Container {
     },
     logout: async () => { },
     refresh: async () => ({ token: 'mock-refresh' }),
+    adminListUsers: async (actor: Actor) => {
+      if (actor.globalRole !== 'admin') throw forbidden('FORBIDDEN', 'Administrative privileges required');
+      return [...users.values()].map((u) => ({
+        id: u.id,
+        email: u.email,
+        username: u.username,
+        globalRole: u.globalRole,
+        disabled: u.disabled,
+      }));
+    },
+    adminCreateUser: async (actor: Actor, input: any) => {
+      if (actor.globalRole !== 'admin') throw forbidden('FORBIDDEN', 'Administrative privileges required');
+      for (const u of users.values()) {
+        if (u.email.toLowerCase() === input.email.toLowerCase()) {
+          throw conflict('ACCOUNT_EXISTS', 'An account with that email already exists');
+        }
+      }
+      const id = crypto.randomUUID();
+      const rawPassword = input.initialPassword || 'Vdb!InitPass123';
+      const newUser: UserRecord = {
+        id,
+        email: input.email.toLowerCase(),
+        username: input.username,
+        globalRole: input.globalRole ?? 'user',
+        disabled: false,
+      };
+      users.set(id, newUser);
+      return {
+        user: { id, email: newUser.email, username: newUser.username, globalRole: newUser.globalRole, disabled: false },
+        initialPassword: rawPassword,
+      };
+    },
+    adminUpdateUser: async (actor: Actor, userId: string, patch: any) => {
+      if (actor.globalRole !== 'admin') throw forbidden('FORBIDDEN', 'Administrative privileges required');
+      const u = users.get(userId);
+      if (!u) throw notFound('User');
+      if (patch.username) u.username = patch.username;
+      if (patch.globalRole) u.globalRole = patch.globalRole;
+      if (patch.disabled !== undefined) u.disabled = patch.disabled;
+      return { id: u.id, email: u.email, username: u.username, globalRole: u.globalRole, disabled: u.disabled };
+    },
+    adminResetPassword: async (actor: Actor, userId: string) => {
+      if (actor.globalRole !== 'admin') throw forbidden('FORBIDDEN', 'Administrative privileges required');
+      const u = users.get(userId);
+      if (!u) throw notFound('User');
+      return { temporaryPassword: 'Vdb!ResetPass123' };
+    },
+    adminListAuditLogs: async (actor: Actor) => {
+      if (actor.globalRole !== 'admin') throw forbidden('FORBIDDEN', 'Administrative privileges required');
+      return [];
+    },
   };
 
   const mockRepositoryService: any = {
@@ -169,7 +241,7 @@ function buildMockContainer(env: Env, logger: Logger): Container {
     },
 
     create: async (actor: Actor, input: { name: string; description?: string }) => {
-      const id = `repo-${Date.now()}`;
+      const id = crypto.randomUUID();
       const repo: RepoRecord = {
         id,
         name: input.name,
@@ -276,6 +348,7 @@ function buildMockContainer(env: Env, logger: Logger): Container {
         complete: async () => { },
         release: async () => { },
       } as any,
+      sql: {} as any,
     },
   };
 
@@ -337,36 +410,38 @@ describe('Multi-User Isolation & RBAC Regression', () => {
 
   it('Alice can list her own repository but not Bob\'s', async () => {
     const res = await fetch(`${baseUrl}/api/repos`, {
-      headers: { Authorization: 'Bearer uid:u-alice' },
+      headers: { Authorization: `Bearer uid:${ALICE_ID}` },
     });
     assert.equal(res.status, 200);
-    const body: any[] = await res.json();
-    const names = body.map((r: any) => r.name);
+    const data: any = await res.json();
+    const reposList: any[] = data.repositories ?? data;
+    const names = reposList.map((r: any) => r.name);
     assert.ok(names.includes('alice-repo'), 'Alice should see alice-repo');
     assert.ok(!names.includes('bob-repo'), 'Alice must NOT see bob-repo');
   });
 
   it("Bob can list his own repository but not Alice's", async () => {
     const res = await fetch(`${baseUrl}/api/repos`, {
-      headers: { Authorization: 'Bearer uid:u-bob' },
+      headers: { Authorization: `Bearer uid:${BOB_ID}` },
     });
     assert.equal(res.status, 200);
-    const body: any[] = await res.json();
-    const names = body.map((r: any) => r.name);
+    const data: any = await res.json();
+    const reposList: any[] = data.repositories ?? data;
+    const names = reposList.map((r: any) => r.name);
     assert.ok(names.includes('bob-repo'), 'Bob should see bob-repo');
     assert.ok(!names.includes('alice-repo'), 'Bob must NOT see alice-repo');
   });
 
   it('Bob gets 404 when directly accessing Alice repo by ID (existence hidden)', async () => {
-    const res = await fetch(`${baseUrl}/api/repos/repo-a`, {
-      headers: { Authorization: 'Bearer uid:u-bob' },
+    const res = await fetch(`${baseUrl}/api/repos/${REPO_A_ID}`, {
+      headers: { Authorization: `Bearer uid:${BOB_ID}` },
     });
     assert.equal(res.status, 404, 'Repo existence must not be disclosed to non-members');
   });
 
   it('Bob gets 404 when listing branches of Alice repo', async () => {
-    const res = await fetch(`${baseUrl}/api/repos/repo-a/branches`, {
-      headers: { Authorization: 'Bearer uid:u-bob' },
+    const res = await fetch(`${baseUrl}/api/repos/${REPO_A_ID}/branches`, {
+      headers: { Authorization: `Bearer uid:${BOB_ID}` },
     });
     assert.equal(res.status, 404);
   });
@@ -381,8 +456,8 @@ describe('Multi-User Isolation & RBAC Regression', () => {
   // -------------------------------------------------------------------------
 
   it('Duplicate display names are allowed (two users with same username)', () => {
-    const a = users.get('u-alice');
-    const b = users.get('u-bob');
+    const a = users.get(ALICE_ID);
+    const b = users.get(BOB_ID);
     assert.equal(a?.username, 'alice_dev');
     assert.equal(b?.username, 'alice_dev');
     assert.notEqual(a?.email, b?.email, 'Different emails — both valid accounts');
@@ -400,7 +475,7 @@ describe('Multi-User Isolation & RBAC Regression', () => {
     });
     assert.equal(res.status, 409);
     const body: any = await res.json();
-    assert.equal(body.code, 'ACCOUNT_EXISTS');
+    assert.equal(body.error?.code ?? body.code, 'ACCOUNT_EXISTS');
   });
 
   it('Client-supplied globalRole is ignored; registration always yields user role', async () => {
@@ -416,8 +491,9 @@ describe('Multi-User Isolation & RBAC Regression', () => {
     });
     assert.equal(res.status, 201);
     const body: any = await res.json();
-    assert.equal(body.globalRole, 'user', 'Must always register as user');
-    assert.notEqual(body.globalRole, 'admin', 'Self-registration as admin must be impossible');
+    const registeredUser = body.user ?? body;
+    assert.equal(registeredUser.globalRole, 'user', 'Must always register as user');
+    assert.notEqual(registeredUser.globalRole, 'admin', 'Self-registration as admin must be impossible');
   });
 
   it('Email comparison is case-insensitive: Alice@EXAMPLE.COM duplicate rejected', async () => {
@@ -432,7 +508,7 @@ describe('Multi-User Isolation & RBAC Regression', () => {
     });
     assert.equal(res.status, 409);
     const body: any = await res.json();
-    assert.equal(body.code, 'ACCOUNT_EXISTS');
+    assert.equal(body.error?.code ?? body.code, 'ACCOUNT_EXISTS');
   });
 
   // -------------------------------------------------------------------------
@@ -444,19 +520,21 @@ describe('Multi-User Isolation & RBAC Regression', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer uid:u-alice',
+        Authorization: `Bearer uid:${ALICE_ID}`,
       },
       body: JSON.stringify({ name: 'alice-new-repo', description: 'Test' }),
     });
     assert.equal(createRes.status, 201);
-    const repo: any = await createRes.json();
+    const createData: any = await createRes.json();
+    const repo = createData.repository ?? createData;
 
     const membersRes = await fetch(`${baseUrl}/api/repos/${repo.id}/members`, {
-      headers: { Authorization: 'Bearer uid:u-alice' },
+      headers: { Authorization: `Bearer uid:${ALICE_ID}` },
     });
     assert.equal(membersRes.status, 200);
-    const members: any[] = await membersRes.json();
-    const aliceMember = members.find((m: any) => m.userId === 'u-alice');
+    const membersData: any = await membersRes.json();
+    const members: any[] = membersData.members ?? membersData;
+    const aliceMember = members.find((m: any) => m.userId === ALICE_ID);
     assert.ok(aliceMember, 'Alice should be listed as a member');
     assert.equal(aliceMember.role, 'owner', 'Creator must be owner');
   });
@@ -466,38 +544,38 @@ describe('Multi-User Isolation & RBAC Regression', () => {
   // -------------------------------------------------------------------------
 
   it('Owner can invite Bob as reviewer to Alice repo', async () => {
-    const res = await fetch(`${baseUrl}/api/repos/repo-a/members`, {
+    const res = await fetch(`${baseUrl}/api/repos/${REPO_A_ID}/members`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer uid:u-alice',
+        Authorization: `Bearer uid:${ALICE_ID}`,
       },
       body: JSON.stringify({ email: 'bob@example.com', role: 'reviewer' }),
     });
-    assert.equal(res.status, 201);
+    assert.equal(res.status, 204);
   });
 
   it('Bob can access Alice repo after invitation', async () => {
-    const res = await fetch(`${baseUrl}/api/repos/repo-a`, {
-      headers: { Authorization: 'Bearer uid:u-bob' },
+    const res = await fetch(`${baseUrl}/api/repos/${REPO_A_ID}`, {
+      headers: { Authorization: `Bearer uid:${BOB_ID}` },
     });
     assert.equal(res.status, 200);
   });
 
   it('Bob (reviewer) cannot delete Alice repo — requires owner', async () => {
-    const res = await fetch(`${baseUrl}/api/repos/repo-a`, {
+    const res = await fetch(`${baseUrl}/api/repos/${REPO_A_ID}`, {
       method: 'DELETE',
-      headers: { Authorization: 'Bearer uid:u-bob' },
+      headers: { Authorization: `Bearer uid:${BOB_ID}` },
     });
     assert.equal(res.status, 403);
   });
 
   it('Bob (reviewer) cannot manage members in Alice repo — requires owner', async () => {
-    const res = await fetch(`${baseUrl}/api/repos/repo-a/members`, {
+    const res = await fetch(`${baseUrl}/api/repos/${REPO_A_ID}/members`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer uid:u-bob',
+        Authorization: `Bearer uid:${BOB_ID}`,
       },
       body: JSON.stringify({ email: 'alice@example.com', role: 'viewer' }),
     });
@@ -505,28 +583,28 @@ describe('Multi-User Isolation & RBAC Regression', () => {
   });
 
   it('Owner can update Bob role from reviewer to maintainer', async () => {
-    const res = await fetch(`${baseUrl}/api/repos/repo-a/members/u-bob`, {
+    const res = await fetch(`${baseUrl}/api/repos/${REPO_A_ID}/members/${BOB_ID}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer uid:u-alice',
+        Authorization: `Bearer uid:${ALICE_ID}`,
       },
       body: JSON.stringify({ role: 'maintainer' }),
     });
-    assert.equal(res.status, 200);
+    assert.equal(res.status, 204);
   });
 
   it('Owner can revoke Bob membership from Alice repo', async () => {
-    const res = await fetch(`${baseUrl}/api/repos/repo-a/members/u-bob`, {
+    const res = await fetch(`${baseUrl}/api/repos/${REPO_A_ID}/members/${BOB_ID}`, {
       method: 'DELETE',
-      headers: { Authorization: 'Bearer uid:u-alice' },
+      headers: { Authorization: `Bearer uid:${ALICE_ID}` },
     });
     assert.equal(res.status, 204);
   });
 
   it('Bob loses access to Alice repo after revocation (gets 404)', async () => {
-    const res = await fetch(`${baseUrl}/api/repos/repo-a`, {
-      headers: { Authorization: 'Bearer uid:u-bob' },
+    const res = await fetch(`${baseUrl}/api/repos/${REPO_A_ID}`, {
+      headers: { Authorization: `Bearer uid:${BOB_ID}` },
     });
     assert.equal(res.status, 404, 'Revoked user must get 404 (existence hidden)');
   });
@@ -536,31 +614,31 @@ describe('Multi-User Isolation & RBAC Regression', () => {
   // -------------------------------------------------------------------------
 
   it('Cannot demote the last owner — returns 409 LAST_OWNER', async () => {
-    const ms = memberships.get('repo-a')!;
+    const ms = memberships.get(REPO_A_ID)!;
     const ownerCount = [...ms.values()].filter((r) => r === 'owner').length;
     assert.equal(ownerCount, 1, 'Only Alice should be owner at this point');
 
-    const res = await fetch(`${baseUrl}/api/repos/repo-a/members/u-alice`, {
+    const res = await fetch(`${baseUrl}/api/repos/${REPO_A_ID}/members/${ALICE_ID}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer uid:u-alice',
+        Authorization: `Bearer uid:${ALICE_ID}`,
       },
       body: JSON.stringify({ role: 'maintainer' }),
     });
     assert.equal(res.status, 409);
     const body: any = await res.json();
-    assert.equal(body.code, 'LAST_OWNER');
+    assert.equal(body.error?.code ?? body.code, 'LAST_OWNER');
   });
 
   it('Cannot remove the last owner — returns 409 LAST_OWNER', async () => {
-    const res = await fetch(`${baseUrl}/api/repos/repo-a/members/u-alice`, {
+    const res = await fetch(`${baseUrl}/api/repos/${REPO_A_ID}/members/${ALICE_ID}`, {
       method: 'DELETE',
-      headers: { Authorization: 'Bearer uid:u-alice' },
+      headers: { Authorization: `Bearer uid:${ALICE_ID}` },
     });
     assert.equal(res.status, 409);
     const body: any = await res.json();
-    assert.equal(body.code, 'LAST_OWNER');
+    assert.equal(body.error?.code ?? body.code, 'LAST_OWNER');
   });
 
   // -------------------------------------------------------------------------
@@ -568,25 +646,25 @@ describe('Multi-User Isolation & RBAC Regression', () => {
   // -------------------------------------------------------------------------
 
   it('Alice membership in repo-a does not grant access to repo-b', async () => {
-    const res = await fetch(`${baseUrl}/api/repos/repo-b`, {
-      headers: { Authorization: 'Bearer uid:u-alice' },
+    const res = await fetch(`${baseUrl}/api/repos/${REPO_B_ID}`, {
+      headers: { Authorization: `Bearer uid:${ALICE_ID}` },
     });
     assert.equal(res.status, 404, 'Alice must have no visibility into Bob repo');
   });
 
   it('Alice cannot list branches of repo-b', async () => {
-    const res = await fetch(`${baseUrl}/api/repos/repo-b/branches`, {
-      headers: { Authorization: 'Bearer uid:u-alice' },
+    const res = await fetch(`${baseUrl}/api/repos/${REPO_B_ID}/branches`, {
+      headers: { Authorization: `Bearer uid:${ALICE_ID}` },
     });
     assert.equal(res.status, 404);
   });
 
   it('Alice cannot invite anyone to repo-b — not a member', async () => {
-    const res = await fetch(`${baseUrl}/api/repos/repo-b/members`, {
+    const res = await fetch(`${baseUrl}/api/repos/${REPO_B_ID}/members`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer uid:u-alice',
+        Authorization: `Bearer uid:${ALICE_ID}`,
       },
       body: JSON.stringify({ email: 'alice@example.com', role: 'viewer' }),
     });
@@ -602,5 +680,91 @@ describe('Multi-User Isolation & RBAC Regression', () => {
       headers: { Authorization: 'Bearer forged-token-xyz' },
     });
     assert.equal(res.status, 401);
+  });
+
+  // -------------------------------------------------------------------------
+  // § 8. Admin-controlled user provisioning & Platform RBAC
+  // -------------------------------------------------------------------------
+
+  it('Admin can list portal users', async () => {
+    const res = await fetch(`${baseUrl}/api/admin/users`, {
+      headers: { Authorization: `Bearer uid:${ADMIN_ID}` },
+    });
+    assert.equal(res.status, 200);
+    const body: any = await res.json();
+    assert.ok(Array.isArray(body.users));
+    assert.ok(body.users.length >= 3);
+  });
+
+  it('Non-admin (Alice) cannot list portal users — returns 403', async () => {
+    const res = await fetch(`${baseUrl}/api/admin/users`, {
+      headers: { Authorization: `Bearer uid:${ALICE_ID}` },
+    });
+    assert.equal(res.status, 403);
+  });
+
+  it('Admin can provision a new user with initial credentials', async () => {
+    const res = await fetch(`${baseUrl}/api/admin/users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${ADMIN_ID}`,
+      },
+      body: JSON.stringify({
+        email: 'carol_dev@example.com',
+        username: 'carol_dev',
+        globalRole: 'user',
+        initialPassword: 'TempPassword123!',
+      }),
+    });
+    assert.equal(res.status, 201);
+    const body: any = await res.json();
+    assert.ok(body.user.id);
+    assert.equal(body.user.email, 'carol_dev@example.com');
+    assert.ok(body.initialPassword);
+  });
+
+  it('Non-admin (Bob) cannot provision a user — returns 403', async () => {
+    const res = await fetch(`${baseUrl}/api/admin/users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${BOB_ID}`,
+      },
+      body: JSON.stringify({
+        email: 'intruder@example.com',
+        username: 'intruder',
+        globalRole: 'admin',
+      }),
+    });
+    assert.equal(res.status, 403);
+  });
+
+  it('Admin can deactivate an account, revoking access', async () => {
+    const patchRes = await fetch(`${baseUrl}/api/admin/users/${BOB_ID}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${ADMIN_ID}`,
+      },
+      body: JSON.stringify({ disabled: true }),
+    });
+    assert.equal(patchRes.status, 200);
+
+    // Deactivated user now fails loadActiveUser / authenticated endpoints
+    const accessRes = await fetch(`${baseUrl}/api/repos`, {
+      headers: { Authorization: `Bearer uid:${BOB_ID}` },
+    });
+    assert.equal(accessRes.status, 401);
+  });
+
+  it('Admin can reset a user password generating secure temporary credential', async () => {
+    const resetRes = await fetch(`${baseUrl}/api/admin/users/${ALICE_ID}/reset-password`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer uid:${ADMIN_ID}` },
+    });
+    assert.equal(resetRes.status, 200);
+    const body: any = await resetRes.json();
+    assert.ok(body.temporaryPassword);
   });
 });

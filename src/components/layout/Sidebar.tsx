@@ -64,6 +64,7 @@ export const Sidebar: React.FC = () => {
     activeScreen,
     navigateTo,
     activeRepo,
+    currentUser,
     isBackendConfigured,
     mergeRequests,
     conflicts,
@@ -72,6 +73,8 @@ export const Sidebar: React.FC = () => {
     roleCapabilities,
     setCreateBranchModalOpen,
   } = useVersionDb();
+
+  const role = currentUser.role;
 
   const openMrCount = mergeRequests.filter((m) => m.status !== 'MERGED').length;
   const unresolvedConflictCount = conflicts.filter((c) => !c.resolved).length;
@@ -139,6 +142,66 @@ export const Sidebar: React.FC = () => {
     );
   };
 
+  // Build role-specific navigation lists
+  const coreNavItems: NavItem[] =
+    role === 'Admin'
+      ? [
+          { path: 'admin-dashboard', label: 'Admin Overview', icon: 'dashboard' },
+          { path: 'members-and-permissions', label: 'User Management', icon: 'manage_accounts' },
+          { path: 'repositories', label: 'Repositories', icon: 'dns' },
+          { path: 'admin-approvals', label: 'Escalation Approvals', icon: 'verified_user', badgeType: 'approvals' },
+          { path: 'audit-logs', label: 'Audit Logs', icon: 'fact_check' },
+        ]
+      : role === 'Reviewer'
+      ? [
+          { path: 'reviewer-dashboard', label: 'Reviewer Overview', icon: 'rate_review' },
+          { path: 'merge-requests', label: 'Review Queue', icon: 'merge', badgeType: 'mrs' },
+          { path: 'changes-and-diff', label: 'Changes & Diff', icon: 'difference' },
+          { path: 'commits-and-history', label: 'Commit History', icon: 'commit' },
+          { path: 'repositories', label: 'Repositories', icon: 'dns' },
+          { path: 'branches', label: 'Branches', icon: 'account_tree' },
+        ]
+      : role === 'Viewer'
+      ? [
+          { path: 'viewer-dashboard', label: 'Viewer Overview', icon: 'explore' },
+          { path: 'repositories', label: 'Repositories', icon: 'dns' },
+          { path: 'schema-explorer', label: 'Schema Explorer', icon: 'schema' },
+          { path: 'table-data', label: 'Table Data', icon: 'table_rows' },
+          { path: 'branches', label: 'Branches', icon: 'account_tree' },
+          { path: 'commits-and-history', label: 'Commits & History', icon: 'commit' },
+          { path: 'changes-and-diff', label: 'Changes & Diff', icon: 'difference' },
+          { path: 'merge-requests', label: 'Merge Status', icon: 'merge', badgeType: 'mrs' },
+        ]
+      : CORE_ITEMS;
+
+  const governanceNavItems: NavItem[] =
+    role === 'Viewer'
+      ? [
+          { path: 'sql-workspace', label: 'SQL Console (Read)', icon: 'terminal' },
+          { path: 'profile', label: 'Profile & Account', icon: 'person' },
+          { path: 'notifications', label: 'Notifications', icon: 'notifications', badgeType: 'notifications' },
+          { path: 'settings', label: 'Settings', icon: 'settings' },
+        ]
+      : role === 'Reviewer'
+      ? [
+          { path: 'conflict-resolution', label: 'Conflicts', icon: 'warning', iconColorClass: 'text-amber-500', badgeType: 'conflicts' },
+          { path: 'data-lineage', label: 'Data Lineage', icon: 'hub' },
+          { path: 'profile', label: 'Profile & Account', icon: 'manage_accounts' },
+          { path: 'notifications', label: 'Notifications', icon: 'notifications', badgeType: 'notifications' },
+          { path: 'settings', label: 'Settings', icon: 'settings' },
+        ]
+      : role === 'Admin'
+      ? [
+          { path: 'sql-workspace', label: 'SQL Workspace', icon: 'terminal' },
+          { path: 'time-machine', label: 'Time Machine', icon: 'history' },
+          { path: 'data-lineage', label: 'Data Lineage', icon: 'hub' },
+          { path: 'schema-versions', label: 'Schema Versions', icon: 'sell' },
+          { path: 'profile', label: 'Profile & Account', icon: 'manage_accounts' },
+          { path: 'notifications', label: 'Notifications', icon: 'notifications', badgeType: 'notifications' },
+          { path: 'settings', label: 'Settings', icon: 'settings' },
+        ]
+      : GOVERNANCE_ITEMS;
+
   const usedGb = activeRepo?.snapshotDiskUsedGb ?? 0;
   const totalGb = activeRepo?.snapshotDiskTotalGb ?? 0;
   const storagePercent = totalGb > 0 ? Math.min(100, Math.round((usedGb / totalGb) * 100)) : 0;
@@ -148,27 +211,56 @@ export const Sidebar: React.FC = () => {
       {/* Navigation */}
       <div className="flex-1 py-3 px-2.5 space-y-5 overflow-y-auto">
         <div className="space-y-0.5">
-          <div className="vdb-section-label px-2 pt-1 pb-1.5">Core</div>
-          {CORE_ITEMS.map(renderItem)}
+          <div className="vdb-section-label px-2 pt-1 pb-1.5 flex items-center justify-between">
+            <span>{role === 'Admin' ? 'Administration' : role === 'Reviewer' ? 'Code Review' : role === 'Viewer' ? 'Read-Only Explorer' : 'Core'}</span>
+            <span className="badge badge-neutral text-[9px] uppercase font-mono px-1.5 py-0">{role}</span>
+          </div>
+          {coreNavItems.map(renderItem)}
         </div>
 
         <div className="space-y-0.5">
-          <div className="vdb-section-label px-2 pt-1 pb-1.5">Governance</div>
-          {GOVERNANCE_ITEMS.map(renderItem)}
+          <div className="vdb-section-label px-2 pt-1 pb-1.5">
+            {role === 'Admin' ? 'Platform Tools' : role === 'Viewer' ? 'General' : 'Governance'}
+          </div>
+          {governanceNavItems.map(renderItem)}
         </div>
       </div>
 
       {/* Bottom Actions */}
       <div className="px-2.5 pb-3 pt-2 border-t border-[#e2e5f6] space-y-2.5">
-        {/* New Branch CTA */}
-        <button
-          type="button"
-          onClick={() => setCreateBranchModalOpen(true)}
-          className="btn-primary w-full justify-center py-2 text-[13px]"
-        >
-          <span className="material-symbols-outlined text-[16px]">add</span>
-          New Branch
-        </button>
+        {/* Role-Specific CTA Button */}
+        {roleCapabilities.canCreateBranch ? (
+          <button
+            type="button"
+            onClick={() => setCreateBranchModalOpen(true)}
+            className="btn-primary w-full justify-center py-2 text-[13px]"
+          >
+            <span className="material-symbols-outlined text-[16px]">add</span>
+            New Branch
+          </button>
+        ) : role === 'Admin' ? (
+          <button
+            type="button"
+            onClick={() => navigateTo('members-and-permissions')}
+            className="btn-primary w-full justify-center py-2 text-[13px]"
+          >
+            <span className="material-symbols-outlined text-[16px]">person_add</span>
+            Provision Users
+          </button>
+        ) : role === 'Reviewer' ? (
+          <button
+            type="button"
+            onClick={() => navigateTo('merge-requests')}
+            className="btn-primary w-full justify-center py-2 text-[13px]"
+          >
+            <span className="material-symbols-outlined text-[16px]">rate_review</span>
+            Review Queue
+          </button>
+        ) : (
+          <div className="p-2.5 rounded-lg bg-[#f8f9ff] border border-[#e2e5f6] text-center">
+            <span className="text-[11px] font-mono text-[#5263a0]">Viewer Mode (Read-Only)</span>
+          </div>
+        )}
 
         {/* Storage Widget */}
         <div className="bg-[#f5f6ff] rounded-lg border border-[#e2e5f6] px-3 py-2.5 space-y-1.5">
@@ -201,3 +293,4 @@ export const Sidebar: React.FC = () => {
     </aside>
   );
 };
+

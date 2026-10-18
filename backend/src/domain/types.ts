@@ -14,7 +14,10 @@ export interface User {
   id: string; email: string; username: string; passwordHash: string;
   globalRole: GlobalRole; disabled: boolean; createdAt: Date;
 }
-export interface PublicUser { id: string; email: string; username: string; globalRole: GlobalRole }
+export interface PublicUser {
+  id: string; email: string; username: string; globalRole: GlobalRole;
+  disabled?: boolean; createdAt?: Date | string;
+}
 
 export interface Repository { id: string; name: string; description: string; ownerId: string; defaultBranch: string; createdAt: Date }
 export interface RepositoryWithRole extends Repository { role: RepoRole }

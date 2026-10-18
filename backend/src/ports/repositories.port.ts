@@ -1,14 +1,17 @@
 import type {
-  AuditEntry, Branch, Commit, CommitKind, JsonValue, Member, PublicUser, RepoRole, Repository, RepositoryWithRole, User, WorkingChange,
+  AuditEntry, Branch, Commit, CommitKind, GlobalRole, JsonValue, Member, PublicUser, RepoRole, Repository, RepositoryWithRole, User, WorkingChange,
 } from '../domain/types';
 
 export interface UserRepo {
-  create(u: { email: string; username: string; passwordHash: string }): Promise<User>;
+  create(u: { email: string; username: string; passwordHash: string; globalRole?: GlobalRole }): Promise<User>;
   findById(id: string): Promise<User | null>;
   findByIdentifier(identifier: string): Promise<User | null>; // email or username
   findByEmail(email: string): Promise<User | null>;
+  list(): Promise<User[]>;
+  update(id: string, patch: { username?: string; globalRole?: GlobalRole; disabled?: boolean }): Promise<User | null>;
+  setPassword(id: string, passwordHash: string): Promise<boolean>;
 }
-export const toPublicUser = (u: User): PublicUser => ({ id: u.id, email: u.email, username: u.username, globalRole: u.globalRole });
+export const toPublicUser = (u: User): PublicUser => ({ id: u.id, email: u.email, username: u.username, globalRole: u.globalRole, disabled: u.disabled, createdAt: u.createdAt });
 
 export interface TokenRecord { id: string; userId: string; expiresAt: Date; revokedAt: Date | null }
 export interface TokenRepo {
@@ -75,6 +78,7 @@ export interface NewAuditEntry {
 export interface AuditRepo {
   append(e: NewAuditEntry): Promise<AuditEntry>;
   list(repoId: string, limit: number, beforeId?: number): Promise<AuditEntry[]>;
+  listAll(limit: number, beforeId?: number): Promise<AuditEntry[]>;
   verify(repoId: string | null): Promise<{ ok: boolean; checked: number; brokenAtId?: number }>;
 }
 

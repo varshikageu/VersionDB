@@ -73,7 +73,11 @@ interface VersionDbContextValue {
   users: UserProfile[];
   roleCapabilities: (typeof ROLE_UI_CAPABILITIES)[UserRole];
   switchUserOrRole: (roleOrId: string) => void;
-  signInWithBackend: (email: string, password: string) => Promise<ServiceOperationResult>;
+  signInWithBackend: (
+    email: string,
+    password: string,
+    intendedRole?: UserRole
+  ) => Promise<ServiceOperationResult>;
   registerWithBackend: (
     email: string,
     username: string,
@@ -223,6 +227,21 @@ interface VersionDbContextValue {
   exportAuditLedger: (
     format: 'json' | 'csv'
   ) => Promise<ServiceOperationResult<{ downloadUrl: string }>>;
+  // Admin Portal & User Management (Admin Only)
+  portalUsers: UserProfile[];
+  fetchPortalUsers: () => Promise<ServiceOperationResult<UserProfile[]>>;
+  createPortalUser: (input: {
+    email: string;
+    username: string;
+    role: UserRole;
+    initialPassword?: string;
+  }) => Promise<ServiceOperationResult<{ user: UserProfile; initialPassword: string }>>;
+  updatePortalUser: (
+    userId: string,
+    patch: { username?: string; role?: UserRole; disabled?: boolean }
+  ) => Promise<ServiceOperationResult<UserProfile>>;
+  resetPortalUserPassword: (userId: string) => Promise<ServiceOperationResult<{ temporaryPassword: string }>>;
+  fetchAdminAuditLogs: () => Promise<ServiceOperationResult<any[]>>;
 
   // Modals & Toasts
   isCommitModalOpen: boolean;
@@ -373,6 +392,7 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [schemaVersions, setSchemaVersions] = useState<SchemaVersionTag[]>([]);
   const [lineageNodes, setLineageNodes] = useState<LineageNode[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [portalUsers, setPortalUsers] = useState<UserProfile[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
   // SQL Workspace Tabs (starts with an empty untitled buffer, no hardcoded queries)
@@ -639,18 +659,51 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const check = await versionDbServices.auth.verifySession(savedToken, { silent: true });
         if (!isMounted) return;
         if (check.ok && check.data) {
+          let authenticatedUser = check.data;
+          if (authenticatedUser.role !== 'Admin') {
+            const reposRes = await versionDbServices.repositories.listRepositories(savedToken);
+            if (reposRes.ok && reposRes.data && reposRes.data.length > 0) {
+              const roles = reposRes.data.map((r) => r.role || 'viewer');
+              let resolvedRole: UserRole = 'Viewer';
+              if (roles.includes('owner') || roles.includes('maintainer')) {
+                resolvedRole = 'Developer';
+              } else if (roles.includes('reviewer')) {
+                resolvedRole = 'Reviewer';
+              } else {
+                resolvedRole = 'Viewer';
+              }
+              authenticatedUser = {
+                ...authenticatedUser,
+                role: resolvedRole,
+                title: `${resolvedRole} Engineer`,
+              };
+            }
+          }
+
           setAuthState({
             isAuthenticated: true,
             isInitialLoading: false,
             sessionToken: savedToken,
-            user: check.data,
+            user: authenticatedUser,
             lastCheckedUtc: new Date().toISOString(),
             authError: null,
           });
           setBackendConnectionState('connected');
-          // If currently on an auth screen, redirect to overview
+          // If currently on an auth screen, redirect to the user's role-specific dashboard
           setActiveScreen((current) => {
             if (AUTH_SCREENS.includes(current)) {
+              if (authenticatedUser.role === 'Admin') {
+                window.location.hash = '#/admin-dashboard';
+                return 'admin-dashboard';
+              }
+              if (authenticatedUser.role === 'Reviewer') {
+                window.location.hash = '#/reviewer-dashboard';
+                return 'reviewer-dashboard';
+              }
+              if (authenticatedUser.role === 'Viewer') {
+                window.location.hash = '#/viewer-dashboard';
+                return 'viewer-dashboard';
+              }
               window.location.hash = '#/overview';
               return 'overview';
             }
@@ -775,12 +828,69 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Auth operations
   const signInWithBackend = useCallback(
-    async (email: string, password: string): Promise<ServiceOperationResult> => {
+    async (
+      email: string,
+      password: string,
+      intendedRole?: UserRole
+    ): Promise<ServiceOperationResult> => {
       setIsOperationPending(true);
       const res = await versionDbServices.auth.signIn(email, password);
       setIsOperationPending(false);
 
       if (res.ok && res.data) {
+        let authenticatedUser = res.data.user;
+
+        // Verify authorized repositories/memberships to resolve accurate role for non-admins
+        if (authenticatedUser.role !== 'Admin') {
+          const reposRes = await versionDbServices.repositories.listRepositories(res.data.token);
+          if (reposRes.ok && reposRes.data && reposRes.data.length > 0) {
+            // Find highest effective role across user's authorized repositories
+            const roles = reposRes.data.map((r) => r.role || 'viewer');
+            let resolvedRole: UserRole = 'Viewer';
+            if (roles.includes('owner') || roles.includes('maintainer')) {
+              resolvedRole = 'Developer';
+            } else if (roles.includes('reviewer')) {
+              resolvedRole = 'Reviewer';
+            } else {
+              resolvedRole = 'Viewer';
+            }
+            authenticatedUser = {
+              ...authenticatedUser,
+              role: resolvedRole,
+              title: `${resolvedRole} Engineer`,
+            };
+          }
+        }
+
+        // Enforce Portal / Role validation if user explicitly selected an intended portal
+        if (intendedRole) {
+          const actualRole = authenticatedUser.role;
+          let isAuthorizedForPortal = false;
+
+          if (intendedRole === 'Admin') {
+            isAuthorizedForPortal = actualRole === 'Admin';
+          } else if (intendedRole === 'Reviewer') {
+            isAuthorizedForPortal = actualRole === 'Reviewer' || actualRole === 'Admin';
+          } else if (intendedRole === 'Developer') {
+            isAuthorizedForPortal = actualRole === 'Developer' || actualRole === 'Admin';
+          } else if (intendedRole === 'Viewer') {
+            isAuthorizedForPortal = true; // All authenticated users can access read-only Viewer portal
+          }
+
+          if (!isAuthorizedForPortal) {
+            // Clear any partial session tokens
+            apiClient.setSessionToken(null);
+            const mismatchError = `Access denied: Account ${authenticatedUser.email} has assigned role "${actualRole}", which is not authorized for the ${intendedRole} portal.`;
+            pushToast('error', 'Portal Access Denied', mismatchError);
+            return {
+              ok: false,
+              statusCode: 403,
+              errorCode: 'FORBIDDEN',
+              error: mismatchError,
+            };
+          }
+        }
+
         if (typeof window !== 'undefined' && window.localStorage) {
           localStorage.setItem('versiondb_token', res.data.token);
           if (res.data.refreshToken) {
@@ -788,16 +898,13 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           }
         }
         // Set token on apiClient FIRST — refreshWorkspaceCatalog reads from apiClient.getSessionToken()
-        // to avoid stale closure issues (React state won't reflect the new token until next render).
         apiClient.setSessionToken(res.data.token);
-        // Update the ref eagerly so navigateTo's auth guard sees the correct value
-        // synchronously — React state updates are batched and won't be visible until next render.
         isAuthenticatedRef.current = true;
         setAuthState({
           isAuthenticated: true,
           isInitialLoading: false,
           sessionToken: res.data.token,
-          user: res.data.user,
+          user: authenticatedUser,
           lastCheckedUtc: new Date().toISOString(),
           authError: null,
         });
@@ -814,11 +921,22 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setStagedDdlChanges([]);
         setCommits([]);
 
-        pushToast('success', 'Authenticated', `Signed in as ${res.data.user.email}.`);
-        // Navigate first so the user sees the dashboard immediately, then load data in background.
-        navigateTo('overview');
+        pushToast('success', 'Authenticated', `Signed in as ${authenticatedUser.email} (${authenticatedUser.role}).`);
+
+        // Route to the appropriate portal dashboard:
+        // If intendedRole was selected, route directly into that portal; otherwise route based on actualRole
+        const targetPortal = intendedRole || authenticatedUser.role;
+        if (targetPortal === 'Admin') {
+          navigateTo('admin-dashboard');
+        } else if (targetPortal === 'Reviewer') {
+          navigateTo('reviewer-dashboard');
+        } else if (targetPortal === 'Viewer') {
+          navigateTo('viewer-dashboard');
+        } else {
+          navigateTo('overview');
+        }
         void refreshWorkspaceCatalog();
-        return res;
+        return { ...res, data: { ...res.data, user: authenticatedUser } };
       }
 
       const errMsg =
@@ -1971,6 +2089,97 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     [authState.sessionToken, pushToast]
   );
 
+  // --- Admin User Management Operations (Admin Only) ---
+
+  const fetchPortalUsers = useCallback(async (): Promise<ServiceOperationResult<UserProfile[]>> => {
+    setIsOperationPending(true);
+    const res = await versionDbServices.admin.listUsers();
+    setIsOperationPending(false);
+    if (res.ok && res.data) {
+      setPortalUsers(res.data);
+    }
+    return res;
+  }, []);
+
+  const createPortalUser = useCallback(
+    async (input: {
+      email: string;
+      username: string;
+      role: UserRole;
+      initialPassword?: string;
+    }): Promise<ServiceOperationResult<{ user: UserProfile; initialPassword: string }>> => {
+      setIsOperationPending(true);
+      const globalRole = input.role === 'Admin' ? 'admin' : 'user';
+      const res = await versionDbServices.admin.createUser({
+        email: input.email,
+        username: input.username,
+        globalRole,
+        initialPassword: input.initialPassword,
+      });
+      setIsOperationPending(false);
+
+      if (res.ok && res.data) {
+        setPortalUsers((prev) => [res.data!.user, ...prev]);
+        pushToast('success', 'User Created', `Provisioned account for ${res.data.user.email}.`);
+      } else {
+        pushToast('error', 'User Provisioning Failed', res.error || 'Failed to create user account.');
+      }
+      return res;
+    },
+    [pushToast]
+  );
+
+  const updatePortalUser = useCallback(
+    async (
+      userId: string,
+      patch: { username?: string; role?: UserRole; disabled?: boolean }
+    ): Promise<ServiceOperationResult<UserProfile>> => {
+      setIsOperationPending(true);
+      const backendPatch: { username?: string; globalRole?: 'admin' | 'user'; disabled?: boolean } = {
+        username: patch.username,
+        disabled: patch.disabled,
+      };
+      if (patch.role) {
+        backendPatch.globalRole = patch.role === 'Admin' ? 'admin' : 'user';
+      }
+
+      const res = await versionDbServices.admin.updateUser(userId, backendPatch);
+      setIsOperationPending(false);
+
+      if (res.ok && res.data) {
+        setPortalUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, ...res.data! } : u)));
+        pushToast('success', 'Account Updated', 'User account settings updated successfully.');
+      } else {
+        pushToast('error', 'Update Failed', res.error || 'Failed to update user account.');
+      }
+      return res;
+    },
+    [pushToast]
+  );
+
+  const resetPortalUserPassword = useCallback(
+    async (userId: string): Promise<ServiceOperationResult<{ temporaryPassword: string }>> => {
+      setIsOperationPending(true);
+      const res = await versionDbServices.admin.resetPassword(userId);
+      setIsOperationPending(false);
+
+      if (res.ok && res.data) {
+        pushToast('success', 'Password Reset', 'Temporary credentials generated.');
+      } else {
+        pushToast('error', 'Password Reset Failed', res.error || 'Failed to reset password.');
+      }
+      return res;
+    },
+    [pushToast]
+  );
+
+  const fetchAdminAuditLogs = useCallback(async (): Promise<ServiceOperationResult<any[]>> => {
+    setIsOperationPending(true);
+    const res = await versionDbServices.admin.listAuditLogs({ limit: 100 });
+    setIsOperationPending(false);
+    return res;
+  }, []);
+
   const value: VersionDbContextValue = {
     activeScreen,
     previousScreen,
@@ -2075,6 +2284,13 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     addMember,
     removeMember,
     exportAuditLedger,
+
+    portalUsers,
+    fetchPortalUsers,
+    createPortalUser,
+    updatePortalUser,
+    resetPortalUserPassword,
+    fetchAdminAuditLogs,
 
     isCommitModalOpen,
     setCommitModalOpen,

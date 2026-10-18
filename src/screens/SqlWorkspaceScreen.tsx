@@ -76,9 +76,13 @@ export const SqlWorkspaceScreen: React.FC = () => {
             <button
               type="button"
               onClick={() => void executeActiveQuery()}
-              title="SQL execution is not yet implemented in the backend"
-              className="btn-secondary opacity-60 cursor-not-allowed"
-              disabled
+              title={
+                !activeRepo
+                  ? 'Connect or select a repository to run SQL queries'
+                  : 'Execute SQL query against active branch snapshot'
+              }
+              className={`btn-primary ${!activeRepo ? 'opacity-60 cursor-not-allowed' : ''}`}
+              disabled={!activeRepo}
             >
               <span className="material-symbols-outlined text-[15px]">play_arrow</span>
               Run Query
@@ -113,29 +117,30 @@ export const SqlWorkspaceScreen: React.FC = () => {
         </div>
       </div>
 
-      {/* SQL Engine Status Notice */}
-      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3 text-amber-900">
-        <span className="material-symbols-outlined text-amber-600 text-[20px] mt-0.5 shrink-0">construction</span>
+      {/* SQL Engine Scope & Capabilities Notice */}
+      <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 flex items-start gap-3 text-blue-950">
+        <span className="material-symbols-outlined text-[#2563eb] text-[20px] mt-0.5 shrink-0">database</span>
         <div className="flex-1 min-w-0">
-          <div className="text-[13px] font-semibold text-amber-900">
-            SQL Execution Engine — Not Implemented
+          <div className="text-[13px] font-semibold text-[#1e40af] flex items-center gap-2">
+            <span>Branch Snapshot SQL Execution Engine</span>
+            <span className="text-[10px] bg-blue-200/80 text-blue-900 px-1.5 py-0.2 rounded font-mono font-medium">Active</span>
           </div>
           <p className="text-[12px] opacity-90 mt-0.5 leading-relaxed">
-            The VersionDB backend does not yet expose a SQL execution endpoint (<code className="font-mono text-[11px] bg-white/70 px-1 py-0.5 rounded">POST /api/sql/query</code> is absent from the route table).
-            VersionDB manages versioned <em>record collections</em> via the Records & Commits API — it is not a general-purpose SQL query proxy.
-            You can still compose SQL in this editor and <strong>Stage for Commit</strong> DDL/DML mutations; live query execution requires a future backend implementation.
+            Execute read queries directly against version-controlled collection snapshots on branch <code className="font-mono text-[11px] bg-white/70 px-1 py-0.5 rounded text-blue-900 font-semibold">{activeBranch || 'main'}</code> via <code className="font-mono text-[11px] bg-white/70 px-1 py-0.5 rounded text-blue-900">POST /api/repos/:repoId/sql/execute</code>.
+            Supported operations include single-collection <code className="font-mono text-[11px] bg-white/70 px-1 py-0.5 rounded text-blue-900">SELECT</code> statements with column selection, <code className="font-mono text-[11px] bg-white/70 px-1 py-0.5 rounded text-blue-900">WHERE</code> filters, and <code className="font-mono text-[11px] bg-white/70 px-1 py-0.5 rounded text-blue-900">LIMIT</code>.
+            To stage mutations (<code className="font-mono text-[11px] bg-white/70 px-1 py-0.5 rounded">CREATE</code>, <code className="font-mono text-[11px] bg-white/70 px-1 py-0.5 rounded">INSERT</code>, <code className="font-mono text-[11px] bg-white/70 px-1 py-0.5 rounded">UPDATE</code>, <code className="font-mono text-[11px] bg-white/70 px-1 py-0.5 rounded">DELETE</code>) into VersionDB's commit history, use <strong>Stage for Commit</strong>.
           </p>
           {isInvalidPgSyntax && (
             <p className="text-[12px] text-amber-950 mt-1.5 font-semibold">
               ⚠ <code className="font-mono text-[11px] bg-white/70 px-1 py-0.5 rounded">SHOW DATABASES</code> is MySQL syntax and is not valid PostgreSQL.
-              Use <code className="font-mono text-[11px] bg-white/70 px-1 py-0.5 rounded">SELECT datname FROM pg_database;</code> instead (once the execution endpoint is implemented).
+              Select from your collection name (e.g. <code className="font-mono text-[11px] bg-white/70 px-1 py-0.5 rounded">SELECT * FROM &lt;collection&gt; LIMIT 50;</code>).
             </p>
           )}
         </div>
         <button
           type="button"
           onClick={() => setApiContractDrawerOpen(true)}
-          className="shrink-0 btn-secondary text-[11px] py-1.5 bg-white text-amber-900 border-amber-300 hover:bg-amber-100"
+          className="shrink-0 btn-secondary text-[11px] py-1.5 bg-white text-blue-950 border-blue-300 hover:bg-blue-100"
         >
           View Contract
         </button>
@@ -301,19 +306,19 @@ export const SqlWorkspaceScreen: React.FC = () => {
               ) : !lastQueryResult ? (
                 <div className="py-8 text-center space-y-2">
                   <span className="material-symbols-outlined text-[#8890b8] text-[28px]">terminal</span>
-                  <div className="text-[13px] font-semibold text-[#10172a]">SQL Execution Not Available</div>
+                  <div className="text-[13px] font-semibold text-[#10172a]">Ready to Execute Query</div>
                   <p className="text-[12px] text-[#5263a0] max-w-md mx-auto leading-relaxed">
-                    The backend does not implement a SQL execution engine. You can write queries here for reference or stage DDL/DML mutations for commit.
+                    Enter a <code className="font-mono text-[11px] bg-[#f1f3fb] px-1 py-0.5 rounded">SELECT</code> query in the editor above and click <strong>Run Query</strong> to inspect version-controlled snapshot rows on branch <span className="font-semibold">{activeBranch || 'main'}</span>.
                   </p>
                 </div>
               ) : lastQueryResult.status === 'error' ? (
                 <ErrorStateCard
-                  title="SQL Execution Not Implemented"
+                  title="Query Execution Error"
                   message={
                     lastQueryResult.errorMessage ||
-                    'The VersionDB backend does not expose a SQL execution endpoint. See the Backend Contract for details.'
+                    'An error occurred while executing the SQL statement against the branch snapshot.'
                   }
-                  code={lastQueryResult.errorCode || 'NOT_IMPLEMENTED'}
+                  code={lastQueryResult.errorCode || 'SQL_EXECUTION_ERROR'}
                 />
               ) : resultSubTab === 'rows' ? (
                 lastQueryResult.rows.length === 0 ? (
