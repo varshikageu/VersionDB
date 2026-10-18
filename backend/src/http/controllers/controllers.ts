@@ -65,6 +65,30 @@ export function createControllers(c: Container) {
       }),
     },
 
+    admin: {
+      listUsers: asyncHandler(async (req: Request, res: Response) => {
+        res.json({ users: await auth.adminListUsers(actorOf(req)) });
+      }),
+      createUser: asyncHandler(async (req: Request, res: Response) => {
+        const body = parse(s.adminCreateUserBody, req.body);
+        const result = await auth.adminCreateUser(actorOf(req), body, req.ip);
+        res.status(201).json(result);
+      }),
+      updateUser: asyncHandler(async (req: Request, res: Response) => {
+        const { userId } = parse(s.userParams, req.params);
+        const patch = parse(s.adminUpdateUserBody, req.body);
+        res.json({ user: await auth.adminUpdateUser(actorOf(req), userId, patch, req.ip) });
+      }),
+      resetPassword: asyncHandler(async (req: Request, res: Response) => {
+        const { userId } = parse(s.userParams, req.params);
+        res.json(await auth.adminResetPassword(actorOf(req), userId, req.ip));
+      }),
+      auditLogs: asyncHandler(async (req: Request, res: Response) => {
+        const query = parse(s.adminAuditQuery, req.query);
+        res.json({ auditLogs: await auth.adminListAuditLogs(actorOf(req), query) });
+      }),
+    },
+
     repositories: {
       create: asyncHandler(async (req: Request, res: Response) => {
         res.status(201).json({ repository: await repositories.create(actorOf(req), parse(s.createRepoBody, req.body)) });

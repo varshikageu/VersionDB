@@ -1,5 +1,8 @@
 export type ScreenPath =
   | 'overview'
+  | 'admin-dashboard'
+  | 'reviewer-dashboard'
+  | 'viewer-dashboard'
   | 'repositories'
   | 'sql-workspace'
   | 'schema-explorer'
@@ -89,6 +92,8 @@ export interface UserProfile {
   role: UserRole;
   title: string;
   avatarUrl: string;
+  disabled?: boolean;
+  createdAt?: string;
 }
 
 export type DatabaseConnectionMode = 'connected' | 'read-only' | 'disconnected';
@@ -113,6 +118,7 @@ export interface Repository {
   snapshotDiskTotalGb: number;
   latestSnapshotRef: string;
   replicaBufferHealthPct: number;
+  role?: string;
 }
 
 export interface ColumnDef {

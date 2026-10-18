@@ -8,6 +8,7 @@ import { useVersionDb } from '../context/VersionDbContext';
 
 export const MergeRequestsScreen: React.FC = () => {
   const {
+    roleCapabilities,
     mergeRequests,
     selectedMrNumber,
     setSelectedMrNumber,
@@ -204,27 +205,56 @@ export const MergeRequestsScreen: React.FC = () => {
                 </div>
                 <p className="text-[13px] text-[#5263a0] leading-relaxed">{activeMr.description}</p>
                 <div className="flex flex-wrap items-center gap-2.5 pt-3 border-t border-[#f1f3fb]">
-                  <button
-                    type="button"
-                    disabled={isOperationPending}
-                    onClick={() => void approveMergeRequest(activeMr.number)}
-                    className="btn-secondary text-[12px] py-1.5"
-                  >
-                    Approve Merge Request
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isOperationPending}
-                    onClick={() => void executeMerge(activeMr.number)}
-                    className="btn-primary text-[12px] py-1.5"
-                  >
-                    Execute Merge
-                  </button>
+                  {roleCapabilities.canReviewAndApproveMr ? (
+                    <button
+                      type="button"
+                      disabled={isOperationPending || activeMr.status === 'MERGED'}
+                      onClick={() => void approveMergeRequest(activeMr.number)}
+                      className="btn-secondary text-[12px] py-1.5"
+                    >
+                      <span className="material-symbols-outlined text-[15px] text-emerald-600">check_circle</span>
+                      Approve Merge Request
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled
+                      title="Approving merge requests requires Reviewer or Admin role"
+                      className="btn-secondary text-[12px] py-1.5 opacity-50 cursor-not-allowed"
+                    >
+                      <span className="material-symbols-outlined text-[15px] text-[#8890b8]">lock</span>
+                      Approve (Reviewer Required)
+                    </button>
+                  )}
+
+                  {roleCapabilities.canMergeProtectedMain ? (
+                    <button
+                      type="button"
+                      disabled={isOperationPending || activeMr.status === 'MERGED' || activeMr.status === 'CONFLICT'}
+                      onClick={() => void executeMerge(activeMr.number)}
+                      className="btn-primary text-[12px] py-1.5"
+                    >
+                      <span className="material-symbols-outlined text-[15px]">merge</span>
+                      Execute Merge
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled
+                      title="Executing merges requires Admin authorization"
+                      className="btn-primary text-[12px] py-1.5 opacity-50 cursor-not-allowed bg-slate-400"
+                    >
+                      <span className="material-symbols-outlined text-[15px]">lock</span>
+                      Merge (Admin Required)
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => navigateTo('changes-and-diff')}
                     className="btn-secondary text-[12px] py-1.5"
                   >
+                    <span className="material-symbols-outlined text-[15px] text-[#2563eb]">difference</span>
                     Inspect Diff
                   </button>
                 </div>

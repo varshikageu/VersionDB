@@ -13,6 +13,23 @@ export const registerBody = z.object({
 export const loginBody = z.object({ identifier: z.string().trim().min(1).max(254), password: z.string().min(1).max(1024) });
 export const refreshBody = z.object({ refreshToken: z.string().min(20).max(200) });
 
+export const adminCreateUserBody = z.object({
+  email,
+  username: z.string().trim().regex(USERNAME_RE, 'Use 3-32 letters, digits, "_", "." or "-"'),
+  globalRole: z.enum(['user', 'admin']).default('user'),
+  initialPassword: z.string().min(10).optional(),
+});
+export const adminUpdateUserBody = z.object({
+  username: z.string().trim().regex(USERNAME_RE, 'Use 3-32 letters, digits, "_", "." or "-"').optional(),
+  globalRole: z.enum(['user', 'admin']).optional(),
+  disabled: z.boolean().optional(),
+});
+export const userParams = z.object({ userId: z.string().uuid() });
+export const adminAuditQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  before: z.coerce.number().int().positive().optional(),
+});
+
 export const repoParams = z.object({ repoId: z.string().uuid() });
 export const createRepoBody = z.object({
   name: z.string().trim().regex(REPO_NAME_RE, 'Use 1-64 letters, digits, "_", "." or "-"'),

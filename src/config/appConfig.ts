@@ -178,13 +178,13 @@ export const BACKEND_INTEGRATION_CONTRACT: ApiEndpointContract[] = [
   {
     module: 'SQL Execution Engine',
     method: 'POST',
-    endpoint: 'PENDING_SPEC (No direct SQL execution endpoint implemented)',
+    endpoint: '/api/repos/:repoId/sql/execute',
     description:
-      'Executes SQL statements against a real database branch connection without auto-committing to VersionDB.',
+      'Executes SELECT queries against version-controlled collection snapshots for a branch.',
     requiredRole: 'Viewer',
-    requestSchema: 'Pending backend specification: SqlExecutionRequest { repositoryId, branch, sql }',
-    responseSchema: 'Pending backend specification: QueryExecutionResult',
-    contractStatus: 'PENDING_BACKEND_SPEC',
+    requestSchema: 'SqlExecutionRequest { branch: string, sql: string }',
+    responseSchema: 'QueryExecutionResult { status, rows, columns, rowCount, executionTimeMs, ... }',
+    contractStatus: 'CONFIGURED',
   },
   {
     module: 'Schema & Catalog Introspection',

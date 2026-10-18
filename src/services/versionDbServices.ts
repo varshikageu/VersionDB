@@ -44,6 +44,8 @@ export interface BackendUserDto {
   email: string;
   username: string;
   globalRole: 'admin' | 'user';
+  disabled?: boolean;
+  createdAt?: string;
 }
 
 export interface BackendAuthResponseDto {
@@ -115,6 +117,8 @@ export function mapBackendUserToProfile(u: BackendUserDto): UserProfile {
     role,
     title: u.globalRole === 'admin' ? 'System Administrator' : 'Database Engineer',
     avatarUrl: '',
+    disabled: u.disabled,
+    createdAt: u.createdAt,
   };
 }
 
@@ -179,6 +183,7 @@ export function mapBackendRepoToRepository(r: BackendRepoDto): Repository {
     snapshotDiskTotalGb: 10,
     latestSnapshotRef: 'HEAD',
     replicaBufferHealthPct: 100,
+    role: r.role,
   };
 }
 
@@ -413,6 +418,107 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
           ok: false,
           errorCode: 'SERVER_ERROR',
           error: 'Password reset is not supported by the VersionDB backend API.',
+        };
+      },
+    },
+
+    admin: {
+      async listUsers(): Promise<ServiceOperationResult<UserProfile[]>> {
+        const res = await client.request<{ users: BackendUserDto[] }>('/api/admin/users', {
+          method: 'GET',
+        });
+        if (res.ok && res.data) {
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: res.data.users.map(mapBackendUserToProfile),
+          };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
+        };
+      },
+
+      async createUser(input: {
+        email: string;
+        username: string;
+        globalRole: 'admin' | 'user';
+        initialPassword?: string;
+      }): Promise<ServiceOperationResult<{ user: UserProfile; initialPassword: string }>> {
+        const res = await client.request<{ user: BackendUserDto; initialPassword: string }>('/api/admin/users', {
+          method: 'POST',
+          body: input,
+        });
+        if (res.ok && res.data) {
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: {
+              user: mapBackendUserToProfile(res.data.user),
+              initialPassword: res.data.initialPassword,
+            },
+          };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
+        };
+      },
+
+      async updateUser(
+        userId: string,
+        patch: { username?: string; globalRole?: 'admin' | 'user'; disabled?: boolean }
+      ): Promise<ServiceOperationResult<UserProfile>> {
+        const res = await client.request<{ user: BackendUserDto }>(`/api/admin/users/${userId}`, {
+          method: 'PATCH',
+          body: patch,
+        });
+        if (res.ok && res.data) {
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: mapBackendUserToProfile(res.data.user),
+          };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
+        };
+      },
+
+      async resetPassword(userId: string): Promise<ServiceOperationResult<{ temporaryPassword: string }>> {
+        return client.request<{ temporaryPassword: string }>(`/api/admin/users/${userId}/reset-password`, {
+          method: 'POST',
+        });
+      },
+
+      async listAuditLogs(query?: { limit?: number; before?: number }): Promise<ServiceOperationResult<any[]>> {
+        const params = new URLSearchParams();
+        if (query?.limit) params.set('limit', String(query.limit));
+        if (query?.before) params.set('before', String(query.before));
+        const qs = params.toString() ? `?${params.toString()}` : '';
+        const res = await client.request<{ auditLogs: any[] }>(`/api/admin/audit-logs${qs}`, {
+          method: 'GET',
+        });
+        if (res.ok && res.data) {
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: res.data.auditLogs,
+          };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
         };
       },
     },

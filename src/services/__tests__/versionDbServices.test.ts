@@ -1084,4 +1084,110 @@ describe('VersionDB Integration Bug Fix Regressions', () => {
     assert.equal(res.data?.deleted, true);
     assert.equal(res.data?.repoId, 'repo-abc-123');
   });
+
+  it('sql.executeQuery validates empty SQL before making network request', async () => {
+    let fetchCalled = false;
+    const client = new VersionDbApiClient({
+      apiBaseUrl: 'http://localhost:3000',
+      fetchImpl: async () => {
+        fetchCalled = true;
+        return new Response('{}', { status: 200 });
+      },
+    });
+
+    const services = createVersionDbServices(client);
+    const res = await services.sql.executeQuery({
+      repositoryId: 'repo-1',
+      branch: 'main',
+      sql: '   ',
+    });
+
+    assert.equal(res.ok, false);
+    assert.equal(res.errorCode, 'VALIDATION_ERROR');
+    assert.equal(fetchCalled, false);
+  });
+
+  it('sql.executeQuery sends POST /api/repos/:repoId/sql/execute with branch and sql', async () => {
+    let capturedUrl = '';
+    let capturedMethod = '';
+    let capturedBody = '';
+    let capturedAuth = '';
+
+    const client = new VersionDbApiClient({
+      apiBaseUrl: 'http://localhost:3000',
+      fetchImpl: async (url, init) => {
+        capturedUrl = url.toString();
+        capturedMethod = init?.method || '';
+        capturedBody = (init?.body as string) || '';
+        capturedAuth = (init?.headers as Record<string, string>)?.['Authorization'] || '';
+        return new Response(
+          JSON.stringify({
+            status: 'success',
+            rows: [{ id: 'row-1', name: 'Alice' }],
+            columns: [{ name: 'name', type: 'string' }],
+            rowCount: 1,
+            totalTableRows: 1,
+            executionTimeMs: 12,
+            bufferHitsPct: 0,
+            memoryMb: 0,
+            targetTable: 'users',
+            explainPlan: ['Read collection users'],
+            messages: ['Returned 1 row(s).'],
+          }),
+          { status: 200 }
+        );
+      },
+    });
+
+    const services = createVersionDbServices(client);
+    const res = await services.sql.executeQuery(
+      {
+        repositoryId: 'repo-123',
+        branch: 'feature-branch',
+        sql: 'SELECT name FROM users WHERE id = 1',
+      },
+      'test-session-jwt'
+    );
+
+    assert.equal(res.ok, true);
+    assert.equal(capturedUrl, 'http://localhost:3000/api/repos/repo-123/sql/execute');
+    assert.equal(capturedMethod, 'POST');
+    assert.equal(capturedAuth, 'Bearer test-session-jwt');
+    assert.deepEqual(JSON.parse(capturedBody), {
+      branch: 'feature-branch',
+      sql: 'SELECT name FROM users WHERE id = 1',
+    });
+    assert.equal(res.data?.status, 'success');
+    assert.equal(res.data?.rowCount, 1);
+    assert.equal(res.data?.targetTable, 'users');
+  });
+
+  it('sql.executeQuery handles backend rejection for unsupported SQL', async () => {
+    const client = new VersionDbApiClient({
+      apiBaseUrl: 'http://localhost:3000',
+      fetchImpl: async () => {
+        return new Response(
+          JSON.stringify({
+            error: {
+              code: 'UNSUPPORTED_SQL',
+              message: 'Only one SELECT statement is supported.',
+            },
+          }),
+          { status: 400 }
+        );
+      },
+    });
+
+    const services = createVersionDbServices(client);
+    const res = await services.sql.executeQuery({
+      repositoryId: 'repo-123',
+      branch: 'main',
+      sql: 'DROP TABLE users',
+    });
+
+    assert.equal(res.ok, false);
+    assert.equal(res.statusCode, 400);
+    assert.equal(res.errorCode, 'VALIDATION_ERROR');
+    assert.equal(res.error, 'Only one SELECT statement is supported.');
+  });
 });

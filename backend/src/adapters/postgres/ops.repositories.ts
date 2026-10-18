@@ -52,6 +52,15 @@ export class PgAuditRepo implements AuditRepo {
     return r.rows.map(mapAudit);
   }
 
+  async listAll(limit: number, beforeId?: number) {
+    const r = await this.db.query(
+      `SELECT a.*, u.username AS actor_name FROM audit_logs a LEFT JOIN users u ON u.id = a.actor_id
+       WHERE ($1::bigint IS NULL OR a.id < $1) ORDER BY a.id DESC LIMIT $2`,
+      [beforeId ?? null, limit],
+    );
+    return r.rows.map(mapAudit);
+  }
+
   async verify(repoId: string | null) {
     let lastId = 0;
     let prevHash = GENESIS_HASH;

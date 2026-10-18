@@ -5,7 +5,7 @@ import type { GlobalRole, PublicUser, User } from '../../domain/types';
 import type { CachePort } from '../../ports/cache.port';
 import { toPublicUser, type UnitOfWork } from '../../ports/repositories.port';
 import { randomToken, sha256Hex } from '../../shared/crypto';
-import { conflict, unauthorized } from '../../shared/errors';
+import { conflict, forbidden, notFound, unauthorized } from '../../shared/errors';
 import { isUniqueViolation } from '../../shared/pg-errors';
 import type { AuditService } from '../audit/audit.service';
 
@@ -67,6 +67,137 @@ export class AuthService {
 
   async me(userId: string): Promise<PublicUser> {
     return toPublicUser(await this.loadActiveUser(userId));
+  }
+
+  // --- Admin-Controlled User Management & Platform RBAC ---
+
+  private assertAdmin(actor: import('../../domain/types').Actor): void {
+    if (actor.globalRole !== 'admin') {
+      throw forbidden('FORBIDDEN', 'Administrative privileges required');
+    }
+  }
+
+  async adminListUsers(actor: import('../../domain/types').Actor): Promise<PublicUser[]> {
+    this.assertAdmin(actor);
+    const all = await this.uow.repos.users.list();
+    return all.map(toPublicUser);
+  }
+
+  async adminCreateUser(
+    actor: import('../../domain/types').Actor,
+    input: { email: string; username: string; globalRole: GlobalRole; initialPassword?: string },
+    ip?: string
+  ): Promise<{ user: PublicUser; initialPassword: string }> {
+    this.assertAdmin(actor);
+    const rawPassword = input.initialPassword && input.initialPassword.length >= 10
+      ? input.initialPassword
+      : `Vdb!${randomToken(12)}9`;
+    const passwordHash = await bcrypt.hash(rawPassword, this.env.BCRYPT_COST);
+
+    try {
+      return await this.uow.transaction(async (repos) => {
+        const user = await repos.users.create({
+          email: input.email.toLowerCase(),
+          username: input.username,
+          passwordHash,
+          globalRole: input.globalRole,
+        });
+        await this.audit.log(repos, {
+          repoId: null,
+          actorId: actor.userId,
+          action: 'admin.user_create',
+          entityType: 'user',
+          entityId: user.id,
+          metadata: { globalRole: input.globalRole, email: input.email },
+          ip,
+        });
+        return { user: toPublicUser(user), initialPassword: rawPassword };
+      });
+    } catch (e) {
+      if (isUniqueViolation(e)) {
+        throw conflict('ACCOUNT_EXISTS', 'An account with that email already exists');
+      }
+      throw e;
+    }
+  }
+
+  async adminUpdateUser(
+    actor: import('../../domain/types').Actor,
+    userId: string,
+    patch: { username?: string; globalRole?: GlobalRole; disabled?: boolean },
+    ip?: string
+  ): Promise<PublicUser> {
+    this.assertAdmin(actor);
+    const existing = await this.uow.repos.users.findById(userId);
+    if (!existing) throw notFound('User');
+
+    // Prevent deactivating or demoting the last active admin
+    if ((patch.disabled === true || (patch.globalRole && patch.globalRole !== 'admin')) && existing.globalRole === 'admin') {
+      const all = await this.uow.repos.users.list();
+      const activeAdmins = all.filter((u) => u.globalRole === 'admin' && !u.disabled);
+      if (activeAdmins.length <= 1) {
+        throw conflict('LAST_ADMIN', 'Cannot disable or demote the last remaining active platform admin');
+      }
+    }
+
+    const updated = await this.uow.transaction(async (repos) => {
+      const u = await repos.users.update(userId, patch);
+      if (!u) throw notFound('User');
+      if (patch.disabled) {
+        await repos.tokens.revokeAllForUser(userId, 'refresh');
+      }
+      await this.audit.log(repos, {
+        repoId: null,
+        actorId: actor.userId,
+        action: 'admin.user_update',
+        entityType: 'user',
+        entityId: userId,
+        metadata: patch,
+        ip,
+      });
+      return u;
+    });
+
+    this.cache.delete(`user:${userId}`);
+    return toPublicUser(updated);
+  }
+
+  async adminResetPassword(
+    actor: import('../../domain/types').Actor,
+    userId: string,
+    ip?: string
+  ): Promise<{ temporaryPassword: string }> {
+    this.assertAdmin(actor);
+    const target = await this.uow.repos.users.findById(userId);
+    if (!target) throw notFound('User');
+
+    const tempPassword = `Vdb!${randomToken(12)}9`;
+    const passwordHash = await bcrypt.hash(tempPassword, this.env.BCRYPT_COST);
+
+    await this.uow.transaction(async (repos) => {
+      await repos.users.setPassword(userId, passwordHash);
+      await repos.tokens.revokeAllForUser(userId, 'refresh');
+      await this.audit.log(repos, {
+        repoId: null,
+        actorId: actor.userId,
+        action: 'admin.user_reset_password',
+        entityType: 'user',
+        entityId: userId,
+        ip,
+      });
+    });
+
+    this.cache.delete(`user:${userId}`);
+    return { temporaryPassword: tempPassword };
+  }
+
+  async adminListAuditLogs(
+    actor: import('../../domain/types').Actor,
+    query: { limit?: number; before?: number }
+  ): Promise<import('../../domain/types').AuditEntry[]> {
+    this.assertAdmin(actor);
+    const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
+    return this.uow.repos.audit.listAll(limit, query.before);
   }
 
   verifyAccessToken(token: string): { userId: string; globalRole: GlobalRole } {
