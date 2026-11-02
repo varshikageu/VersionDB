@@ -269,6 +269,9 @@ const VersionDbContext = createContext<VersionDbContextValue | undefined>(undefi
 
 const VALID_SCREENS: ScreenPath[] = [
   'overview',
+  'admin-dashboard',
+  'reviewer-dashboard',
+  'viewer-dashboard',
   'repositories',
   'sql-workspace',
   'schema-explorer',
