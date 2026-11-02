@@ -1809,6 +1809,7 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setSelectedMrNumber(res.data.number);
         setCreateMrModalOpen(false);
         pushToast('success', 'Merge Request Created', `Opened MR #${res.data.number}.`);
+        void refreshWorkspaceCatalog();
       } else {
         pushToast(
           'error',
@@ -1939,6 +1940,7 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (res.ok && res.data) {
         setMergeRequests((prev) => prev.map((mr) => (mr.number === mrNumber ? res.data! : mr)));
         pushToast('success', 'Merge Completed', `MR #${mrNumber} merged on backend.`);
+        void refreshWorkspaceCatalog();
       } else {
         pushToast(
           'error',
