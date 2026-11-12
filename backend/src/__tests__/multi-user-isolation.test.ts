@@ -349,6 +349,7 @@ function buildMockContainer(env: Env, logger: Logger): Container {
         complete: async () => { },
         release: async () => { },
       } as any,
+      mergeRequests: {} as any,
     },
   };
 

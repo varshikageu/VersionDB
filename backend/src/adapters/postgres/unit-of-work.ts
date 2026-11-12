@@ -4,12 +4,15 @@ import { PgMemberRepo, PgRepositoryRepo, PgTokenRepo, PgUserRepo } from './ident
 import type { Queryable } from './pool';
 import { PgAuditRepo, PgIdempotencyRepo } from './ops.repositories';
 import { PgBranchRepo, PgCommitRepo, PgWorkingChangeRepo } from './version.repositories';
+import { PgConflictRepo, PgMergeApprovalRepo, PgMergeRepo, PgMergeRequestRepo } from './merge.repositories';
 
 function build(db: Queryable, pool?: Pool): Repositories {
   return {
     users: new PgUserRepo(db), tokens: new PgTokenRepo(db), repositories: new PgRepositoryRepo(db), members: new PgMemberRepo(db),
     branches: new PgBranchRepo(db), commits: new PgCommitRepo(db), workingChanges: new PgWorkingChangeRepo(db),
     audit: new PgAuditRepo(db, pool), idempotency: new PgIdempotencyRepo(db),
+    mergeRequests: new PgMergeRequestRepo(db), conflicts: new PgConflictRepo(db),
+    mergeApprovals: new PgMergeApprovalRepo(db), merges: new PgMergeRepo(db),
   };
 }
 

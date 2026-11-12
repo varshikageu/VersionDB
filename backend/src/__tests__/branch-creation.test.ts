@@ -252,6 +252,7 @@ describe('VersionDB Branch Creation API & Service Tests', () => {
           release: async () => { },
         } as any,
         sql: {} as any,
+        mergeRequests: {} as any,
       },
     };
 

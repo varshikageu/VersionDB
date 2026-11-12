@@ -1,5 +1,6 @@
 import type {
-  AuditEntry, Branch, Commit, CommitKind, GlobalRole, JsonValue, Member, PublicUser, RepoRole, Repository, RepositoryWithRole, User, WorkingChange,
+  ApprovalDecision, AuditEntry, Branch, Commit, CommitKind, ConflictResolutionMode, GlobalRole, JsonValue, Member,
+  MergeApproval, MergeConflict, MergeRecord, MergeRequest, PublicUser, RepoRole, Repository, RepositoryWithRole, User, WorkingChange,
 } from '../domain/types';
 
 export interface UserRepo {
@@ -94,9 +95,90 @@ export interface IdempotencyRepo {
   deleteExpired(): Promise<number>;
 }
 
+export interface NewMergeRequest {
+  repoId: string;
+  number: number;
+  title: string;
+  description: string;
+  sourceBranchId: string | null;
+  targetBranchId: string | null;
+  sourceBranchName: string;
+  targetBranchName: string;
+  authorId: string;
+  baseCommitId: string | null;
+  sourceHeadCommitId: string;
+  targetHeadCommitId: string;
+  hasConflicts: boolean;
+}
+
+export interface MergeRequestRepo {
+  create(mr: NewMergeRequest): Promise<MergeRequest>;
+  findById(id: string): Promise<MergeRequest | null>;
+  findByNumber(repoId: string, number: number): Promise<MergeRequest | null>;
+  findOpenByBranchPair(repoId: string, sourceBranch: string, targetBranch: string): Promise<MergeRequest | null>;
+  list(repoId: string, status?: string): Promise<MergeRequest[]>;
+  nextNumber(repoId: string): Promise<number>;
+  close(id: string): Promise<boolean>;
+  setMerged(id: string, mergeId: string, mergedBy: string): Promise<boolean>;
+  updateResolution(id: string, hasConflicts: boolean, resolutionRev: number): Promise<boolean>;
+}
+
+export interface NewConflict {
+  mergeRequestId: string;
+  path: string;
+  baseExists: boolean;
+  baseValue: JsonValue | null;
+  oursExists: boolean;
+  oursValue: JsonValue | null;
+  theirsExists: boolean;
+  theirsValue: JsonValue | null;
+}
+
+export interface ConflictRepo {
+  insertBatch(conflicts: NewConflict[]): Promise<void>;
+  listByMr(mergeRequestId: string): Promise<MergeConflict[]>;
+  findById(id: string): Promise<MergeConflict | null>;
+  resolve(id: string, resolution: ConflictResolutionMode, resolvedExists: boolean, resolvedValue: JsonValue | null, resolvedBy: string): Promise<boolean>;
+  countUnresolved(mergeRequestId: string): Promise<number>;
+  deleteByMr(mergeRequestId: string): Promise<number>;
+}
+
+export interface MergeApprovalRepo {
+  upsert(approval: {
+    mergeRequestId: string;
+    reviewerId: string;
+    decision: ApprovalDecision;
+    comment: string;
+    sourceHeadCommitId: string;
+    resolutionRev: number;
+  }): Promise<MergeApproval>;
+  listByMr(mergeRequestId: string): Promise<MergeApproval[]>;
+  countValid(mergeRequestId: string, sourceHeadCommitId: string, resolutionRev: number): Promise<number>;
+}
+
+export interface NewMerge {
+  repoId: string;
+  sourceBranch: string;
+  targetBranch: string;
+  baseCommitId: string | null;
+  sourceCommitId: string;
+  targetCommitId: string;
+  resultCommitId: string;
+  strategy: 'three_way';
+  conflictCount: number;
+  mergedBy: string;
+}
+
+export interface MergeRepo {
+  insert(m: NewMerge): Promise<MergeRecord>;
+  findById(id: string): Promise<MergeRecord | null>;
+  listByRepo(repoId: string, limit?: number): Promise<MergeRecord[]>;
+}
+
 export interface Repositories {
   users: UserRepo; tokens: TokenRepo; repositories: RepositoryRepo; members: MemberRepo; branches: BranchRepo;
   commits: CommitRepo; workingChanges: WorkingChangeRepo; audit: AuditRepo; idempotency: IdempotencyRepo;
+  mergeRequests: MergeRequestRepo; conflicts: ConflictRepo; mergeApprovals: MergeApprovalRepo; merges: MergeRepo;
 }
 
 export interface UnitOfWork {
