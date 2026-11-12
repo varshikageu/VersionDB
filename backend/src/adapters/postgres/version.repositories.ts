@@ -73,14 +73,10 @@ export class PgCommitRepo implements CommitRepo {
 
   async insert(c: NewCommit): Promise<Commit> {
     const r = await this.db.query(
-      `INSERT INTO commits (repo_id, snapshot_hash, author_id, message, kind, created_at)
-       VALUES ($1, $2, $3, $4, $5, date_trunc('milliseconds', clock_timestamp())) RETURNING id`,
-      [c.repoId, c.snapshotHash, c.authorId, c.message, c.kind],
+      `SELECT create_commit_with_parents($1, $2, $3, $4, $5, $6) AS id`,
+      [c.repoId, c.snapshotHash, c.authorId, c.message, c.kind, c.parents],
     );
     const id: string = r.rows[0].id;
-    for (const [ord, parent] of c.parents.entries()) {
-      await this.db.query('INSERT INTO commit_parents (commit_id, parent_id, ord) VALUES ($1, $2, $3)', [id, parent, ord]);
-    }
     return (await this.find(c.repoId, id))!;
   }
   async registerSnapshot(repoId: string, hash: string, recordCount: number, sizeBytes: number) {

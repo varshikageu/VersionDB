@@ -26,8 +26,10 @@ export function createApiRouter(c: Container): Router {
   api.get('/admin/users', ctl.admin.listUsers);
   api.post('/admin/users', ctl.admin.createUser);
   api.patch('/admin/users/:userId', ctl.admin.updateUser);
+  api.delete('/admin/users/:userId', ctl.admin.deleteUser);
   api.post('/admin/users/:userId/reset-password', ctl.admin.resetPassword);
   api.get('/admin/audit-logs', ctl.admin.auditLogs);
+  api.post('/admin/bootstrap-branches', ctl.admin.bootstrapBranches);
 
   // repositories, membership, branch listing
   api.post('/repos', ctl.repositories.create);
@@ -57,6 +59,15 @@ export function createApiRouter(c: Container): Router {
   api.get('/repos/:repoId/history/:ref', ctl.commits.history);
   api.get('/repos/:repoId/commits/:commitId', ctl.commits.get);
   api.get('/repos/:repoId/commits/:commitId/records', ctl.records.readCommit);
+
+  // merge requests & conflict management
+  api.post('/repos/:repoId/merge-requests', once, ctl.mergeRequests.create);
+  api.get('/repos/:repoId/merge-requests', ctl.mergeRequests.list);
+  api.get('/repos/:repoId/merge-requests/:mrNumber', ctl.mergeRequests.get);
+  api.post('/repos/:repoId/merge-requests/:mrNumber/reviews', ctl.mergeRequests.review);
+  api.post('/repos/:repoId/merge-requests/:mrNumber/conflicts/:conflictId/resolve', ctl.mergeRequests.resolveConflict);
+  api.post('/repos/:repoId/merge-requests/:mrNumber/close', ctl.mergeRequests.close);
+  api.post('/repos/:repoId/merge-requests/:mrNumber/merge', once, ctl.mergeRequests.merge);
 
   return api;
 }

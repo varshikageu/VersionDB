@@ -93,6 +93,7 @@ export interface UserProfile {
   title: string;
   avatarUrl: string;
   disabled?: boolean;
+  deletedAt?: string | null;
   createdAt?: string;
 }
 

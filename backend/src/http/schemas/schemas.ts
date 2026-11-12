@@ -85,3 +85,34 @@ export const historyQuery = z.object({
   limit: z.coerce.number().int().min(1).max(LIMITS.maxHistoryPage).default(30),
   before: z.string().max(100).optional(),
 });
+
+export const createMergeRequestBody = z.object({
+  title: z.string().trim().min(1, 'Title is required').max(200, 'Title cannot exceed 200 characters'),
+  description: z.string().trim().max(5000).default(''),
+  sourceBranch: z.string().trim().regex(BRANCH_RE, 'Invalid source branch'),
+  targetBranch: z.string().trim().regex(BRANCH_RE, 'Invalid target branch'),
+});
+
+export const mrNumberParams = repoParams.extend({
+  mrNumber: z.coerce.number().int().positive('Invalid merge request number'),
+});
+
+export const mrConflictParams = mrNumberParams.extend({
+  conflictId: z.string().uuid('Invalid conflict ID'),
+});
+
+export const reviewMrBody = z.object({
+  decision: z.enum(['approved', 'changes_requested']),
+  comment: z.string().trim().max(2000).default(''),
+});
+
+export const resolveConflictBody = z.object({
+  resolution: z.enum(['ours', 'theirs', 'manual']),
+  manualValue: z.unknown().optional(),
+  auditNote: z.string().trim().max(1000).optional(),
+});
+
+export const mrListQuery = z.object({
+  status: z.enum(['open', 'merged', 'closed', 'all', 'OPEN', 'MERGED', 'CLOSED', 'ALL']).optional(),
+});
+

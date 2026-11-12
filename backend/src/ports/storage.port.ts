@@ -15,8 +15,11 @@ export interface StoragePort {
   initRepository(repoId: string): Promise<void>;
   putSnapshot(repoId: string, data: SnapshotData): Promise<SnapshotInfo>;
   getSnapshot(repoId: string, hash: string): Promise<SnapshotData>;
+  listSnapshotHashes(repoId: string): Promise<string[]>;
+  deleteSnapshot(repoId: string, hash: string): Promise<boolean>;
   getRef(repoId: string, branch: string): Promise<string | null>;
   /** expected/next = null means "must not exist" / "delete". Throws StorageConflictError if expected does not match. */
   updateRef(repoId: string, branch: string, expected: string | null, next: string | null): Promise<void>;
   ping(): Promise<void>;
 }
+

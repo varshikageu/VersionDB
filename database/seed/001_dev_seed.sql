@@ -17,9 +17,20 @@ INSERT INTO repository_members (repo_id, user_id, role, added_by) VALUES
   ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000004', 'viewer',     '00000000-0000-4000-8000-000000000002')
 ON CONFLICT DO NOTHING;
 
-INSERT INTO branches (repo_id, name, head_commit_id, created_by) VALUES
-  ('10000000-0000-4000-8000-000000000001', 'main', NULL, '00000000-0000-4000-8000-000000000002')
+-- Initial snapshot for empty repository (SHA-256 of '{}')
+INSERT INTO snapshots (repo_id, hash, record_count, size_bytes) VALUES
+  ('10000000-0000-4000-8000-000000000001', '44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a', 0, 2)
 ON CONFLICT DO NOTHING;
+
+-- Initial commit on repository creation
+INSERT INTO commits (id, repo_id, snapshot_hash, author_id, message, kind) VALUES
+  ('a934a46c-5d8a-407e-bb45-aae1ed8887cb', '10000000-0000-4000-8000-000000000001', '44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a', '00000000-0000-4000-8000-000000000002', 'Initial commit', 'initial')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO branches (id, repo_id, name, head_commit_id, created_by) VALUES
+  ('3056ce39-3443-45e6-bf10-11ecfff32548', '10000000-0000-4000-8000-000000000001', 'main', 'a934a46c-5d8a-407e-bb45-aae1ed8887cb', '00000000-0000-4000-8000-000000000002')
+ON CONFLICT (repo_id, name) DO UPDATE SET head_commit_id = EXCLUDED.head_commit_id;
+
 INSERT INTO protected_branches (repo_id, branch_name, required_approvals) VALUES
   ('10000000-0000-4000-8000-000000000001', 'main', 1)
 ON CONFLICT DO NOTHING;

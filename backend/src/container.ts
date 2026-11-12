@@ -17,6 +17,7 @@ import type { CachePort } from './ports/cache.port';
 import type { UnitOfWork } from './ports/repositories.port';
 import type { StoragePort } from './ports/storage.port';
 import { SqlExecutorService } from './application/sql/sql-executor.service';
+import { MergeRequestService } from './application/merge-request/merge-request.service';
 
 export interface Container {
   env: Env;
@@ -26,7 +27,8 @@ export interface Container {
   cache: CachePort;
   services: {
     audit: AuditService; auth: AuthService; members: MemberService; repositories: RepositoryService;
-    history: HistoryService; records: RecordService; commits: CommitService; idempotency: IdempotencyService;sql: SqlExecutorService;
+    history: HistoryService; records: RecordService; commits: CommitService; idempotency: IdempotencyService; sql: SqlExecutorService;
+    mergeRequests: MergeRequestService;
   };
 }
 
@@ -41,6 +43,7 @@ export function buildContainer(env: Env, logger: Logger, overrides: { storage?: 
   const snapshots = new SnapshotLoader(uow, storage, cache);
   const history = new HistoryService(uow, members);
   const sql = new SqlExecutorService(uow, members, history, snapshots);
+  const mergeRequests = new MergeRequestService(uow, storage, members, snapshots, audit);
 
   return {
     env, logger, uow, storage, cache,
@@ -54,6 +57,7 @@ export function buildContainer(env: Env, logger: Logger, overrides: { storage?: 
       commits: new CommitService(uow, storage, members, snapshots, audit),
       idempotency: new IdempotencyService(uow, env.IDEMPOTENCY_TTL_SECONDS),
       sql,
+      mergeRequests,
     },
   };
 }

@@ -241,6 +241,7 @@ interface VersionDbContextValue {
     userId: string,
     patch: { username?: string; role?: UserRole; disabled?: boolean }
   ) => Promise<ServiceOperationResult<UserProfile>>;
+  deletePortalUser: (userId: string) => Promise<ServiceOperationResult<{ success: boolean; user: UserProfile }>>;
   resetPortalUserPassword: (userId: string) => Promise<ServiceOperationResult<{ temporaryPassword: string }>>;
   fetchAdminAuditLogs: () => Promise<ServiceOperationResult<any[]>>;
 
@@ -269,6 +270,9 @@ const VersionDbContext = createContext<VersionDbContextValue | undefined>(undefi
 
 const VALID_SCREENS: ScreenPath[] = [
   'overview',
+  'admin-dashboard',
+  'reviewer-dashboard',
+  'viewer-dashboard',
   'repositories',
   'sql-workspace',
   'schema-explorer',
@@ -1809,6 +1813,7 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setSelectedMrNumber(res.data.number);
         setCreateMrModalOpen(false);
         pushToast('success', 'Merge Request Created', `Opened MR #${res.data.number}.`);
+        void refreshWorkspaceCatalog();
       } else {
         pushToast(
           'error',
@@ -1823,8 +1828,20 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const approveMergeRequest = useCallback(
     async (mrNumber: number): Promise<ServiceOperationResult<MergeRequest>> => {
+      const repoId = activeRepoId || activeRepo?.id || '';
+      if (!repoId) {
+        const errRes: ServiceOperationResult<MergeRequest> = {
+          ok: false,
+          errorCode: 'VALIDATION_ERROR',
+          error: 'No active repository selected.',
+        };
+        pushToast('error', 'Review Approval Failed', errRes.error!);
+        return errRes;
+      }
+
       setIsOperationPending(true);
       const res = await versionDbServices.mergeRequests.approveMergeRequest(
+        repoId,
         mrNumber,
         authState.sessionToken
       );
@@ -1842,7 +1859,7 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
       return res;
     },
-    [authState.sessionToken, pushToast]
+    [activeRepo?.id, activeRepoId, authState.sessionToken, pushToast]
   );
 
   const resolveConflictItem = useCallback(
@@ -1852,9 +1869,19 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       manualValues?: Record<string, string>,
       auditNote?: string
     ): Promise<ServiceOperationResult<ConflictItem>> => {
+      const repoId = activeRepoId || activeRepo?.id || '';
+      const activeMrNum = selectedMrNumber || 1;
+
       setIsOperationPending(true);
       const res = await versionDbServices.mergeRequests.resolveConflict(
-        { conflictId, mode, manualValues, auditNote },
+        {
+          repositoryId: repoId,
+          mrNumber: activeMrNum,
+          conflictId,
+          mode,
+          manualValues,
+          auditNote,
+        },
         authState.sessionToken
       );
       setIsOperationPending(false);
@@ -1871,7 +1898,7 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
       return res;
     },
-    [authState.sessionToken, pushToast]
+    [activeRepo?.id, activeRepoId, authState.sessionToken, pushToast, selectedMrNumber]
   );
 
   const escalateConflictToAdmin = useCallback(
@@ -1929,8 +1956,20 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const executeMerge = useCallback(
     async (mrNumber: number): Promise<ServiceOperationResult<MergeRequest>> => {
+      const repoId = activeRepoId || activeRepo?.id || '';
+      if (!repoId) {
+        const errRes: ServiceOperationResult<MergeRequest> = {
+          ok: false,
+          errorCode: 'VALIDATION_ERROR',
+          error: 'No active repository selected.',
+        };
+        pushToast('error', 'Merge Failed', errRes.error!);
+        return errRes;
+      }
+
       setIsOperationPending(true);
       const res = await versionDbServices.mergeRequests.mergeBranch(
+        repoId,
         mrNumber,
         authState.sessionToken
       );
@@ -1939,6 +1978,7 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (res.ok && res.data) {
         setMergeRequests((prev) => prev.map((mr) => (mr.number === mrNumber ? res.data! : mr)));
         pushToast('success', 'Merge Completed', `MR #${mrNumber} merged on backend.`);
+        void refreshWorkspaceCatalog();
       } else {
         pushToast(
           'error',
@@ -1948,7 +1988,7 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
       return res;
     },
-    [authState.sessionToken, pushToast]
+    [activeRepo?.id, activeRepoId, authState.sessionToken, pushToast, refreshWorkspaceCatalog]
   );
 
   const executeRollbackToSnapshot = useCallback(
@@ -2174,6 +2214,23 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     [pushToast]
   );
 
+  const deletePortalUser = useCallback(
+    async (userId: string): Promise<ServiceOperationResult<{ success: boolean; user: UserProfile }>> => {
+      setIsOperationPending(true);
+      const res = await versionDbServices.admin.deleteUser(userId);
+      setIsOperationPending(false);
+
+      if (res.ok && res.data) {
+        setPortalUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, ...res.data!.user } : u)));
+        pushToast('success', 'User Deleted', 'Account has been safely archived and anonymized.');
+      } else {
+        pushToast('error', 'Delete User Failed', res.error || 'Failed to delete user account.');
+      }
+      return res;
+    },
+    [pushToast]
+  );
+
   const fetchAdminAuditLogs = useCallback(async (): Promise<ServiceOperationResult<any[]>> => {
     setIsOperationPending(true);
     const res = await versionDbServices.admin.listAuditLogs({ limit: 100 });
@@ -2290,6 +2347,7 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     fetchPortalUsers,
     createPortalUser,
     updatePortalUser,
+    deletePortalUser,
     resetPortalUserPassword,
     fetchAdminAuditLogs,
 

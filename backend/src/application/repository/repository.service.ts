@@ -1,6 +1,6 @@
 import type { Env } from '../../config/env';
 import { DEFAULT_BRANCH } from '../../config/constants';
-import type { Actor, Branch, Repository, RepositoryWithRole } from '../../domain/types';
+import type { Actor, Branch, Repository, RepositoryWithRole, SnapshotData } from '../../domain/types';
 import type { StoragePort } from '../../ports/storage.port';
 import type { UnitOfWork } from '../../ports/repositories.port';
 import { conflict, notFound } from '../../shared/errors';
@@ -8,24 +8,46 @@ import { isUniqueViolation } from '../../shared/pg-errors';
 import type { AuditService } from '../audit/audit.service';
 import type { MemberService } from '../member/member.service';
 
+/** The empty snapshot that every repository's initial commit points at. */
+const EMPTY_SNAPSHOT: SnapshotData = {};
+
 export class RepositoryService {
   constructor(
     private uow: UnitOfWork, private storage: StoragePort, private env: Env,
     private audit: AuditService, private members: MemberService,
   ) {}
 
-  /** Creates the repository, makes the creator its owner, and sets up an empty protected `main`. */
+  /**
+   * Creates the repository, makes the creator its owner, sets up a protected `main`,
+   * and bootstraps an initial empty commit so the branch is never headless.
+   */
   async create(actor: Actor, input: { name: string; description: string }): Promise<RepositoryWithRole> {
     try {
       return await this.uow.transaction(async (repos) => {
         const repo = await repos.repositories.create({ ...input, ownerId: actor.userId });
         await repos.members.upsert({ repoId: repo.id, userId: actor.userId, role: 'owner', addedBy: actor.userId });
-        await repos.branches.create({ repoId: repo.id, name: DEFAULT_BRANCH, headCommitId: null, createdBy: actor.userId });
+        const branch = await repos.branches.create({ repoId: repo.id, name: DEFAULT_BRANCH, headCommitId: null, createdBy: actor.userId });
         await repos.branches.protect(repo.id, DEFAULT_BRANCH, this.env.DEFAULT_REQUIRED_APPROVALS);
-        await this.storage.initRepository(repo.id); // inside the tx: a storage failure rolls everything back
+        await this.storage.initRepository(repo.id);
+
+        // Bootstrap: create the initial empty commit so main always has a valid head.
+        const snapshotInfo = await this.storage.putSnapshot(repo.id, EMPTY_SNAPSHOT);
+        await repos.commits.registerSnapshot(repo.id, snapshotInfo.hash, snapshotInfo.recordCount, snapshotInfo.sizeBytes);
+        const initialCommit = await repos.commits.insert({
+          repoId: repo.id,
+          snapshotHash: snapshotInfo.hash,
+          authorId: actor.userId,
+          message: 'Initial commit',
+          kind: 'initial',
+          parents: [],
+        });
+        // compareAndSetHead expects null -> initialCommit.id
+        await repos.branches.compareAndSetHead(branch.id, null, initialCommit.id);
+        await this.storage.updateRef(repo.id, DEFAULT_BRANCH, null, initialCommit.id);
+
         await this.audit.log(repos, {
           repoId: repo.id, actorId: actor.userId, action: 'repository.create', entityType: 'repository', entityId: repo.id,
-          metadata: { name: repo.name }, ip: actor.ip,
+          metadata: { name: repo.name, initialCommitId: initialCommit.id }, ip: actor.ip,
         });
         return { ...repo, role: 'owner' as const };
       });
@@ -33,6 +55,51 @@ export class RepositoryService {
       if (isUniqueViolation(e)) throw conflict('REPOSITORY_EXISTS', 'You already have a repository with that name');
       throw e;
     }
+  }
+
+  /**
+   * Back-fills empty default branches in existing repositories created before the bootstrap fix.
+   * For each repository whose default branch has headCommitId = NULL, creates an initial empty commit
+   * and advances the head. Safe to call repeatedly - already-bootstrapped repos are skipped.
+   * Returns the number of repos that were back-filled.
+   */
+  async bootstrapEmptyBranches(actorId: string): Promise<number> {
+    const allRepos = await this.uow.repos.repositories.listForUser(actorId, true);
+    let backfilled = 0;
+
+    for (const repo of allRepos) {
+      const branch = await this.uow.repos.branches.find(repo.id, DEFAULT_BRANCH);
+      if (!branch || branch.headCommitId !== null) continue; // already bootstrapped or no default branch
+
+      await this.uow.transaction(async (repos) => {
+        const locked = await repos.branches.lock(repo.id, DEFAULT_BRANCH);
+        if (!locked || locked.headCommitId !== null) return; // double-check under lock
+
+        if (locked.protection) {
+          await repos.branches.allowProtectedWrite();
+        }
+
+        const snapshotInfo = await this.storage.putSnapshot(repo.id, EMPTY_SNAPSHOT);
+        await repos.commits.registerSnapshot(repo.id, snapshotInfo.hash, snapshotInfo.recordCount, snapshotInfo.sizeBytes);
+        const initialCommit = await repos.commits.insert({
+          repoId: repo.id,
+          snapshotHash: snapshotInfo.hash,
+          authorId: actorId,
+          message: 'Initial commit (bootstrap backfill)',
+          kind: 'initial',
+          parents: [],
+        });
+        await repos.branches.compareAndSetHead(locked.id, null, initialCommit.id);
+        await this.storage.updateRef(repo.id, DEFAULT_BRANCH, null, initialCommit.id);
+
+        await this.audit.log(repos, {
+          repoId: repo.id, actorId, action: 'repository.bootstrap', entityType: 'branch', entityId: locked.id,
+          metadata: { branch: DEFAULT_BRANCH, initialCommitId: initialCommit.id },
+        });
+      });
+      backfilled++;
+    }
+    return backfilled;
   }
 
   list(actor: Actor): Promise<RepositoryWithRole[]> {
@@ -64,6 +131,10 @@ export class RepositoryService {
     const source = await this.uow.repos.branches.find(repoId, input.sourceBranch);
     if (!source) {
       throw notFound(`Source branch '${input.sourceBranch}'`);
+    }
+
+    if (!source.headCommitId) {
+      throw conflict('SOURCE_BRANCH_EMPTY', `Source branch '${input.sourceBranch}' has no commits. Cannot branch from an empty branch.`);
     }
 
     const existing = await this.uow.repos.branches.find(repoId, input.name);

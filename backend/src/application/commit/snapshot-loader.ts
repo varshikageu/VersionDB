@@ -24,4 +24,25 @@ export class SnapshotLoader {
     if (!commit) throw notFound('Commit');
     return this.byHash(repoId, commit.snapshotHash);
   }
+
+  /** Cache key for branch-head snapshot resolution */
+  private branchKey(repoId: string, branchName: string): string {
+    return `branch-snap:${repoId}:${branchName}`;
+  }
+
+  /** Invalidate branch-head cache when branch moves (commit, rollback, merge) */
+  invalidateBranch(repoId: string, branchName: string): void {
+    this.cache.delete(this.branchKey(repoId, branchName));
+  }
+
+  /** Resolves snapshot for a branch, utilizing branch-head caching with fast invalidation */
+  async forBranch(repoId: string, branchName: string, headCommitId: string | null): Promise<SnapshotData> {
+    const key = this.branchKey(repoId, branchName);
+    const cached = this.cache.get<SnapshotData>(key);
+    if (cached) return cached;
+    const snap = await this.forCommit(repoId, headCommitId);
+    this.cache.set(key, snap, 60_000);
+    return snap;
+  }
 }
+

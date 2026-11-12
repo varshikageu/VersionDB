@@ -74,6 +74,7 @@ export class CommitService {
         });
         return created;
       });
+      this.snapshots.invalidateBranch?.(repoId, branchName);
       return { ...commit, changeCount: effective.length };
     } catch (e) {
       if (e instanceof StorageConflictError) throw conflict('HEAD_MOVED', 'The branch changed while you were committing. Review and try again.');
@@ -120,7 +121,7 @@ export class CommitService {
     const info = await this.storage.putSnapshot(repoId, snapshot);
 
     try {
-      return await this.uow.transaction(async (repos) => {
+      const rollbackCommit = await this.uow.transaction(async (repos) => {
         const locked = await repos.branches.lock(repoId, branchName);
         if (!locked) throw notFound('Branch');
 
@@ -199,6 +200,8 @@ export class CommitService {
 
         return created;
       });
+      this.snapshots.invalidateBranch?.(repoId, branchName);
+      return rollbackCommit;
     } catch (e) {
       if (e instanceof StorageConflictError) {
         throw conflict(

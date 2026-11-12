@@ -12,7 +12,7 @@ const actorOf = (req: Request): Actor => {
 };
 
 export function createControllers(c: Container) {
-  const { auth, repositories, members, records, commits, history, sql } = c.services;
+  const { auth, repositories, members, records, commits, history, sql, mergeRequests } = c.services;
 
   return {
     auth: {
@@ -83,9 +83,22 @@ export function createControllers(c: Container) {
         const { userId } = parse(s.userParams, req.params);
         res.json(await auth.adminResetPassword(actorOf(req), userId, req.ip));
       }),
+      deleteUser: asyncHandler(async (req: Request, res: Response) => {
+        const { userId } = parse(s.userParams, req.params);
+        res.json(await auth.adminDeleteUser(actorOf(req), userId, req.ip));
+      }),
       auditLogs: asyncHandler(async (req: Request, res: Response) => {
         const query = parse(s.adminAuditQuery, req.query);
         res.json({ auditLogs: await auth.adminListAuditLogs(actorOf(req), query) });
+      }),
+      bootstrapBranches: asyncHandler(async (req: Request, res: Response) => {
+        const actor = actorOf(req);
+        if (actor.globalRole !== 'admin') {
+          res.status(403).json({ error: 'Only platform admins can run bootstrap' });
+          return;
+        }
+        const count = await repositories.bootstrapEmptyBranches(actor.userId);
+        res.json({ backfilled: count, message: `Bootstrapped ${count} repository default branch(es) with initial commits` });
       }),
     },
 
@@ -200,6 +213,53 @@ export function createControllers(c: Container) {
       get: asyncHandler(async (req: Request, res: Response) => {
         const p = parse(s.commitParams, req.params);
         res.json({ commit: await history.getCommit(actorOf(req), p.repoId, p.commitId) });
+      }),
+    },
+
+    mergeRequests: {
+      create: asyncHandler(async (req: Request, res: Response) => {
+        const p = parse(s.repoParams, req.params);
+        const body = parse(s.createMergeRequestBody, req.body);
+        const mr = await mergeRequests.create(actorOf(req), p.repoId, body);
+        res.status(201).json({ mergeRequest: mr });
+      }),
+      list: asyncHandler(async (req: Request, res: Response) => {
+        const p = parse(s.repoParams, req.params);
+        const q = parse(s.mrListQuery, req.query);
+        const list = await mergeRequests.list(actorOf(req), p.repoId, q.status);
+        res.json({ mergeRequests: list });
+      }),
+      get: asyncHandler(async (req: Request, res: Response) => {
+        const p = parse(s.mrNumberParams, req.params);
+        const details = await mergeRequests.get(actorOf(req), p.repoId, p.mrNumber);
+        res.json(details);
+      }),
+      review: asyncHandler(async (req: Request, res: Response) => {
+        const p = parse(s.mrNumberParams, req.params);
+        const body = parse(s.reviewMrBody, req.body);
+        const approval = await mergeRequests.review(actorOf(req), p.repoId, p.mrNumber, body);
+        res.status(201).json({ approval });
+      }),
+      resolveConflict: asyncHandler(async (req: Request, res: Response) => {
+        const p = parse(s.mrConflictParams, req.params);
+        const body = parse(s.resolveConflictBody, req.body);
+        const conflictItem = await mergeRequests.resolveConflict(actorOf(req), p.repoId, p.mrNumber, {
+          conflictId: p.conflictId,
+          resolution: body.resolution,
+          manualValue: body.manualValue as any,
+          auditNote: body.auditNote,
+        });
+        res.json({ conflict: conflictItem });
+      }),
+      close: asyncHandler(async (req: Request, res: Response) => {
+        const p = parse(s.mrNumberParams, req.params);
+        const mr = await mergeRequests.close(actorOf(req), p.repoId, p.mrNumber);
+        res.json({ mergeRequest: mr });
+      }),
+      merge: asyncHandler(async (req: Request, res: Response) => {
+        const p = parse(s.mrNumberParams, req.params);
+        const result = await mergeRequests.merge(actorOf(req), p.repoId, p.mrNumber);
+        res.json(result);
       }),
     },
   };
