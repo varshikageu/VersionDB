@@ -26,6 +26,7 @@ export function createApiRouter(c: Container): Router {
   api.get('/admin/users', ctl.admin.listUsers);
   api.post('/admin/users', ctl.admin.createUser);
   api.patch('/admin/users/:userId', ctl.admin.updateUser);
+  api.delete('/admin/users/:userId', ctl.admin.deleteUser);
   api.post('/admin/users/:userId/reset-password', ctl.admin.resetPassword);
   api.get('/admin/audit-logs', ctl.admin.auditLogs);
   api.post('/admin/bootstrap-branches', ctl.admin.bootstrapBranches);

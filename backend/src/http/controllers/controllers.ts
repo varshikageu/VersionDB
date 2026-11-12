@@ -83,6 +83,10 @@ export function createControllers(c: Container) {
         const { userId } = parse(s.userParams, req.params);
         res.json(await auth.adminResetPassword(actorOf(req), userId, req.ip));
       }),
+      deleteUser: asyncHandler(async (req: Request, res: Response) => {
+        const { userId } = parse(s.userParams, req.params);
+        res.json(await auth.adminDeleteUser(actorOf(req), userId, req.ip));
+      }),
       auditLogs: asyncHandler(async (req: Request, res: Response) => {
         const query = parse(s.adminAuditQuery, req.query);
         res.json({ auditLogs: await auth.adminListAuditLogs(actorOf(req), query) });

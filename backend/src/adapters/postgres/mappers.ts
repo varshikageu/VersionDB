@@ -8,7 +8,7 @@ type Row = Record<string, any>;
 
 export const mapUser = (r: Row): User => ({
   id: r.id, email: r.email, username: r.username, passwordHash: r.password_hash,
-  globalRole: r.global_role, disabled: r.disabled, createdAt: r.created_at,
+  globalRole: r.global_role, disabled: r.disabled, deletedAt: r.deleted_at ?? null, createdAt: r.created_at,
 });
 export const mapRepository = (r: Row): Repository => ({
   id: r.id, name: r.name, description: r.description, ownerId: r.owner_id, defaultBranch: r.default_branch, createdAt: r.created_at,

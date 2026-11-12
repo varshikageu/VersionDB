@@ -28,7 +28,7 @@ export class PgUserRepo implements UserRepo {
     const r = await this.db.query('SELECT * FROM users ORDER BY created_at DESC');
     return r.rows.map(mapUser);
   }
-  async update(id: string, patch: { username?: string; globalRole?: import('../../domain/types').GlobalRole; disabled?: boolean }) {
+  async update(id: string, patch: { username?: string; globalRole?: import('../../domain/types').GlobalRole; disabled?: boolean; deletedAt?: Date | null; email?: string; passwordHash?: string }) {
     const sets: string[] = [];
     const values: any[] = [];
     let idx = 1;
@@ -37,6 +37,14 @@ export class PgUserRepo implements UserRepo {
       sets.push(`username = $${idx++}`);
       values.push(patch.username);
     }
+    if (patch.email !== undefined) {
+      sets.push(`email = $${idx++}`);
+      values.push(patch.email);
+    }
+    if (patch.passwordHash !== undefined) {
+      sets.push(`password_hash = $${idx++}`);
+      values.push(patch.passwordHash);
+    }
     if (patch.globalRole !== undefined) {
       sets.push(`global_role = $${idx++}`);
       values.push(patch.globalRole);
@@ -44,6 +52,10 @@ export class PgUserRepo implements UserRepo {
     if (patch.disabled !== undefined) {
       sets.push(`disabled = $${idx++}`);
       values.push(patch.disabled);
+    }
+    if (patch.deletedAt !== undefined) {
+      sets.push(`deleted_at = $${idx++}`);
+      values.push(patch.deletedAt);
     }
 
     if (sets.length === 0) {

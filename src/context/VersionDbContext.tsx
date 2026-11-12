@@ -241,6 +241,7 @@ interface VersionDbContextValue {
     userId: string,
     patch: { username?: string; role?: UserRole; disabled?: boolean }
   ) => Promise<ServiceOperationResult<UserProfile>>;
+  deletePortalUser: (userId: string) => Promise<ServiceOperationResult<{ success: boolean; user: UserProfile }>>;
   resetPortalUserPassword: (userId: string) => Promise<ServiceOperationResult<{ temporaryPassword: string }>>;
   fetchAdminAuditLogs: () => Promise<ServiceOperationResult<any[]>>;
 
@@ -2213,6 +2214,23 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     [pushToast]
   );
 
+  const deletePortalUser = useCallback(
+    async (userId: string): Promise<ServiceOperationResult<{ success: boolean; user: UserProfile }>> => {
+      setIsOperationPending(true);
+      const res = await versionDbServices.admin.deleteUser(userId);
+      setIsOperationPending(false);
+
+      if (res.ok && res.data) {
+        setPortalUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, ...res.data!.user } : u)));
+        pushToast('success', 'User Deleted', 'Account has been safely archived and anonymized.');
+      } else {
+        pushToast('error', 'Delete User Failed', res.error || 'Failed to delete user account.');
+      }
+      return res;
+    },
+    [pushToast]
+  );
+
   const fetchAdminAuditLogs = useCallback(async (): Promise<ServiceOperationResult<any[]>> => {
     setIsOperationPending(true);
     const res = await versionDbServices.admin.listAuditLogs({ limit: 100 });
@@ -2329,6 +2347,7 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     fetchPortalUsers,
     createPortalUser,
     updatePortalUser,
+    deletePortalUser,
     resetPortalUserPassword,
     fetchAdminAuditLogs,
 

@@ -35,7 +35,7 @@ export class AuthService {
     // Always run one bcrypt comparison so response time does not reveal whether the account exists.
     const hash = user?.passwordHash ?? (this.dummyHash ??= bcrypt.hashSync('versiondb-dummy-password', this.env.BCRYPT_COST));
     const ok = await bcrypt.compare(input.password, hash);
-    if (!user || !ok || user.disabled) {
+    if (!user || !ok || user.disabled || user.deletedAt) {
       await this.audit.log(this.uow.repos, { repoId: null, actorId: user?.id ?? null, action: 'auth.login_failed', entityType: 'user', entityId: user?.id ?? null, ip });
       throw unauthorized('INVALID_CREDENTIALS', 'Invalid credentials');
     }
@@ -131,10 +131,14 @@ export class AuthService {
     const existing = await this.uow.repos.users.findById(userId);
     if (!existing) throw notFound('User');
 
+    if (existing.deletedAt) {
+      throw conflict('USER_DELETED', 'Cannot update or reactivate a deleted user account');
+    }
+
     // Prevent deactivating or demoting the last active admin
     if ((patch.disabled === true || (patch.globalRole && patch.globalRole !== 'admin')) && existing.globalRole === 'admin') {
       const all = await this.uow.repos.users.list();
-      const activeAdmins = all.filter((u) => u.globalRole === 'admin' && !u.disabled);
+      const activeAdmins = all.filter((u) => u.globalRole === 'admin' && !u.disabled && !u.deletedAt);
       if (activeAdmins.length <= 1) {
         throw conflict('LAST_ADMIN', 'Cannot disable or demote the last remaining active platform admin');
       }
@@ -191,6 +195,77 @@ export class AuthService {
     return { temporaryPassword: tempPassword };
   }
 
+  async adminDeleteUser(
+    actor: import('../../domain/types').Actor,
+    userId: string,
+    ip?: string
+  ): Promise<{ success: boolean; user: PublicUser }> {
+    this.assertAdmin(actor);
+
+    // Prevent administrators from deleting their own accounts
+    if (actor.userId === userId) {
+      throw forbidden('SELF_DELETION_FORBIDDEN', 'Administrators cannot delete their own accounts');
+    }
+
+    const existing = await this.uow.repos.users.findById(userId);
+    if (!existing) throw notFound('User');
+
+    if (existing.deletedAt) {
+      throw conflict('USER_ALREADY_DELETED', 'User account is already deleted');
+    }
+
+    // Prevent deletion of the last active Global Admin
+    if (existing.globalRole === 'admin') {
+      const all = await this.uow.repos.users.list();
+      const activeAdmins = all.filter((u) => u.globalRole === 'admin' && !u.disabled && !u.deletedAt);
+      if (activeAdmins.length <= 1) {
+        throw conflict('LAST_ADMIN', 'Cannot delete the last remaining active platform admin');
+      }
+    }
+
+    // Anonymization / archival payload preserving UUID and foreign key relations
+    const anonymizedEmail = `deleted_${userId.slice(0, 8)}_${Date.now()}@deleted.versiondb.local`;
+    const anonymizedUsername = `deleted_user_${userId.slice(0, 8)}`;
+    const unusablePasswordHash = '$2a$12$DELETED_ACCOUNT_CANNOT_AUTHENTICATE_XXXXXXXXXXXXX';
+    const deletedAt = new Date();
+
+    const updated = await this.uow.transaction(async (repos) => {
+      const u = await repos.users.update(userId, {
+        email: anonymizedEmail,
+        username: anonymizedUsername,
+        passwordHash: unusablePasswordHash,
+        disabled: true,
+        deletedAt,
+      });
+      if (!u) throw notFound('User');
+
+      // Revoke all existing sessions and refresh tokens
+      await repos.tokens.revokeAllForUser(userId, 'refresh');
+
+      // Log the deletion action in immutable audit log
+      await this.audit.log(repos, {
+        repoId: null,
+        actorId: actor.userId,
+        action: 'admin.user_delete',
+        entityType: 'user',
+        entityId: userId,
+        metadata: {
+          originalEmail: existing.email,
+          originalUsername: existing.username,
+          originalRole: existing.globalRole,
+          anonymizedEmail,
+          anonymizedUsername,
+        },
+        ip,
+      });
+
+      return u;
+    });
+
+    this.cache.delete(`user:${userId}`);
+    return { success: true, user: toPublicUser(updated) };
+  }
+
   async adminListAuditLogs(
     actor: import('../../domain/types').Actor,
     query: { limit?: number; before?: number }
@@ -215,7 +290,7 @@ export class AuthService {
     const cached = this.cache.get<User>(`user:${userId}`);
     if (cached) return cached;
     const user = await this.uow.repos.users.findById(userId);
-    if (!user || user.disabled) throw unauthorized('INVALID_TOKEN', 'Account not available');
+    if (!user || user.disabled || user.deletedAt) throw unauthorized('INVALID_TOKEN', 'Account not available');
     this.cache.set(`user:${userId}`, user, 15_000);
     return user;
   }

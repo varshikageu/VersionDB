@@ -12,11 +12,11 @@ export interface Actor { userId: string; globalRole: GlobalRole; ip?: string }
 
 export interface User {
   id: string; email: string; username: string; passwordHash: string;
-  globalRole: GlobalRole; disabled: boolean; createdAt: Date;
+  globalRole: GlobalRole; disabled: boolean; deletedAt?: Date | null; createdAt: Date;
 }
 export interface PublicUser {
   id: string; email: string; username: string; globalRole: GlobalRole;
-  disabled?: boolean; createdAt?: Date | string;
+  disabled?: boolean; deletedAt?: Date | string | null; createdAt?: Date | string;
 }
 
 export interface Repository { id: string; name: string; description: string; ownerId: string; defaultBranch: string; createdAt: Date }

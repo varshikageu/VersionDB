@@ -9,10 +9,10 @@ export interface UserRepo {
   findByIdentifier(identifier: string): Promise<User | null>; // email or username
   findByEmail(email: string): Promise<User | null>;
   list(): Promise<User[]>;
-  update(id: string, patch: { username?: string; globalRole?: GlobalRole; disabled?: boolean }): Promise<User | null>;
+  update(id: string, patch: { username?: string; globalRole?: GlobalRole; disabled?: boolean; deletedAt?: Date | null; email?: string; passwordHash?: string }): Promise<User | null>;
   setPassword(id: string, passwordHash: string): Promise<boolean>;
 }
-export const toPublicUser = (u: User): PublicUser => ({ id: u.id, email: u.email, username: u.username, globalRole: u.globalRole, disabled: u.disabled, createdAt: u.createdAt });
+export const toPublicUser = (u: User): PublicUser => ({ id: u.id, email: u.email, username: u.username, globalRole: u.globalRole, disabled: u.disabled, deletedAt: u.deletedAt ?? null, createdAt: u.createdAt });
 
 export interface TokenRecord { id: string; userId: string; expiresAt: Date; revokedAt: Date | null }
 export interface TokenRepo {

@@ -13,6 +13,7 @@ export const AdminDashboardScreen: React.FC = () => {
     fetchPortalUsers,
     createPortalUser,
     updatePortalUser,
+    deletePortalUser,
     resetPortalUserPassword,
     repositories,
     auditLogs,
@@ -31,7 +32,11 @@ export const AdminDashboardScreen: React.FC = () => {
 
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<'ALL' | 'admin' | 'user'>('ALL');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'active' | 'deactivated'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'active' | 'deactivated' | 'deleted'>('active');
+
+  // Delete User Confirmation Modal
+  const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Create User Modal
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -55,10 +60,11 @@ export const AdminDashboardScreen: React.FC = () => {
 
   // Real backend metrics
   const totalUsers = portalUsers.length;
-  const activeUsers = portalUsers.filter((u) => !u.disabled).length;
-  const deactivatedUsers = portalUsers.filter((u) => u.disabled).length;
-  const adminCount = portalUsers.filter((u) => u.role === 'Admin').length;
-  const standardUsersCount = totalUsers - adminCount;
+  const deletedUsers = portalUsers.filter((u) => Boolean(u.deletedAt)).length;
+  const activeUsers = portalUsers.filter((u) => !u.disabled && !u.deletedAt).length;
+  const deactivatedUsers = portalUsers.filter((u) => u.disabled && !u.deletedAt).length;
+  const adminCount = portalUsers.filter((u) => u.role === 'Admin' && !u.deletedAt).length;
+  const standardUsersCount = totalUsers - adminCount - deletedUsers;
   const pendingApprovalsCount = adminApprovals.filter((a) => a.status === 'PENDING').length;
 
   const filteredUsers = portalUsers.filter((u) => {
@@ -75,9 +81,11 @@ export const AdminDashboardScreen: React.FC = () => {
     const matchesStatus =
       statusFilter === 'ALL'
         ? true
+        : statusFilter === 'deleted'
+        ? Boolean(u.deletedAt)
         : statusFilter === 'deactivated'
-        ? u.disabled
-        : !u.disabled;
+        ? u.disabled && !u.deletedAt
+        : !u.disabled && !u.deletedAt;
     return matchesSearch && matchesRole && matchesStatus;
   });
 
@@ -133,6 +141,17 @@ export const AdminDashboardScreen: React.FC = () => {
 
   const handleToggleDisabled = async (user: UserProfile) => {
     await updatePortalUser(user.id, { disabled: !user.disabled });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!userToDelete) return;
+    setDeleteError(null);
+    const res = await deletePortalUser(userToDelete.id);
+    if (res.ok) {
+      setUserToDelete(null);
+    } else {
+      setDeleteError(res.error || 'Failed to delete user.');
+    }
   };
 
   return (
@@ -198,7 +217,7 @@ export const AdminDashboardScreen: React.FC = () => {
             {totalUsers}
           </div>
           <div className="text-[11px] font-mono text-[#8890b8] mt-2">
-            {activeUsers} active · {deactivatedUsers} deactivated
+            {activeUsers} active · {deactivatedUsers} deactivated · {deletedUsers} deleted
           </div>
         </div>
 
@@ -294,9 +313,10 @@ export const AdminDashboardScreen: React.FC = () => {
                   onChange={(e) => setStatusFilter(e.target.value as any)}
                   className="vdb-input text-[12px] py-1 px-2 font-mono"
                 >
-                  <option value="ALL">All Status</option>
                   <option value="active">Active</option>
+                  <option value="ALL">All Users</option>
                   <option value="deactivated">Deactivated</option>
+                  <option value="deleted">Deleted</option>
                 </select>
               </div>
             </div>
@@ -322,13 +342,14 @@ export const AdminDashboardScreen: React.FC = () => {
                   <tbody>
                     {filteredUsers.map((u) => {
                       const isSelf = u.id === currentUser.id;
+                      const isDeleted = Boolean(u.deletedAt);
                       const isDisabled = u.disabled;
 
                       return (
                         <tr key={u.id} className="hover:bg-[#f8f9ff]">
                           <td>
                             <div className="flex items-center gap-2">
-                              <span className="font-semibold text-[#10172a] text-[13px]">{u.name}</span>
+                              <span className={`font-semibold text-[13px] ${isDeleted ? 'line-through text-[#8890b8]' : 'text-[#10172a]'}`}>{u.name}</span>
                               {isSelf && <span className="badge badge-blue">You</span>}
                             </div>
                           </td>
@@ -339,7 +360,12 @@ export const AdminDashboardScreen: React.FC = () => {
                             </span>
                           </td>
                           <td>
-                            {isDisabled ? (
+                            {isDeleted ? (
+                              <span className="inline-flex items-center gap-1.5 text-zinc-500 font-semibold text-[11px] font-mono">
+                                <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
+                                Deleted
+                              </span>
+                            ) : isDisabled ? (
                               <span className="inline-flex items-center gap-1.5 text-red-600 font-semibold text-[11px] font-mono">
                                 <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
                                 Deactivated
@@ -353,27 +379,45 @@ export const AdminDashboardScreen: React.FC = () => {
                           </td>
                           <td className="text-right">
                             <div className="inline-flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                disabled={isOperationPending}
-                                onClick={() => void handleResetPassword(u)}
-                                className="text-[11px] font-mono py-1 px-2.5 rounded-lg text-[#2563eb] hover:bg-[#eff4ff] border border-transparent hover:border-[#b3c5ff] transition-colors disabled:opacity-40"
-                              >
-                                Reset Credential
-                              </button>
-                              {!isSelf && (
+                              {!isDeleted && (
                                 <button
                                   type="button"
                                   disabled={isOperationPending}
-                                  onClick={() => void handleToggleDisabled(u)}
-                                  className={`text-[11px] font-mono py-1 px-2.5 rounded-lg border transition-colors disabled:opacity-40 ${
-                                    isDisabled
-                                      ? 'text-emerald-700 bg-emerald-50 border-emerald-200 hover:bg-emerald-100'
-                                      : 'text-red-600 hover:bg-red-50 border-transparent hover:border-red-200'
-                                  }`}
+                                  onClick={() => void handleResetPassword(u)}
+                                  className="text-[11px] font-mono py-1 px-2.5 rounded-lg text-[#2563eb] hover:bg-[#eff4ff] border border-transparent hover:border-[#b3c5ff] transition-colors disabled:opacity-40"
                                 >
-                                  {isDisabled ? 'Reactivate' : 'Deactivate'}
+                                  Reset Credential
                                 </button>
+                              )}
+                              {!isSelf && !isDeleted && (
+                                <>
+                                  <button
+                                    type="button"
+                                    disabled={isOperationPending}
+                                    onClick={() => void handleToggleDisabled(u)}
+                                    className={`text-[11px] font-mono py-1 px-2.5 rounded-lg border transition-colors disabled:opacity-40 ${
+                                      isDisabled
+                                        ? 'text-emerald-700 bg-emerald-50 border-emerald-200 hover:bg-emerald-100'
+                                        : 'text-amber-600 hover:bg-amber-50 border-transparent hover:border-amber-200'
+                                    }`}
+                                  >
+                                    {isDisabled ? 'Reactivate' : 'Deactivate'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={isOperationPending}
+                                    onClick={() => {
+                                      setDeleteError(null);
+                                      setUserToDelete(u);
+                                    }}
+                                    className="text-[11px] font-mono py-1 px-2.5 rounded-lg text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 hover:border-red-300 transition-colors disabled:opacity-40"
+                                  >
+                                    Delete User
+                                  </button>
+                                </>
+                              )}
+                              {isDeleted && (
+                                <span className="text-[11px] font-mono text-[#8890b8] italic pr-2">Archived</span>
                               )}
                             </div>
                           </td>
@@ -577,7 +621,70 @@ export const AdminDashboardScreen: React.FC = () => {
         </div>
       )}
 
-      {/* Disclosed Credentials Modal */}
+      {/* Delete User Confirmation Modal */}
+      {userToDelete && (
+        <div className="fixed inset-0 z-50 bg-[#10172a]/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-xl shadow-[0_20px_40px_rgba(16,23,42,0.15)] border border-[#e2e5f6] w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-[#f1f3fb] flex items-center justify-between bg-red-50/50">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center text-red-600">
+                  <span className="material-symbols-outlined text-[18px]">person_remove</span>
+                </div>
+                <h3 className="text-[15px] font-semibold text-[#10172a]">Delete User Account</h3>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <p className="text-[13px] text-[#5263a0]">
+                Are you sure you want to delete this user? The account will be archived and permanently disabled from logging in. Historical commits, branches, and audit entries will be preserved.
+              </p>
+
+              <div className="space-y-2 bg-[#f8f9ff] p-3.5 rounded-lg border border-[#e2e5f6] text-[12px] font-mono">
+                <div className="flex justify-between">
+                  <span className="text-[#8890b8]">Username:</span>
+                  <span className="text-[#10172a] font-semibold">{userToDelete.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#8890b8]">Email:</span>
+                  <span className="text-[#10172a] font-semibold">{userToDelete.email}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#8890b8]">Role:</span>
+                  <span className="text-[#2563eb] font-semibold">{userToDelete.role}</span>
+                </div>
+              </div>
+
+              {deleteError && (
+                <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-[12px] text-red-700 font-mono">
+                  {deleteError}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  disabled={isOperationPending}
+                  onClick={() => {
+                    setUserToDelete(null);
+                    setDeleteError(null);
+                  }}
+                  className="btn-secondary text-[12px] py-2 px-3.5"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isOperationPending}
+                  onClick={() => void handleConfirmDelete()}
+                  className="px-3.5 py-2 rounded-lg text-[12px] font-medium text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-40"
+                >
+                  {isOperationPending ? 'Deleting...' : 'Delete User'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {disclosedCredential && (
         <div className="fixed inset-0 z-50 bg-[#10172a]/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div className="bg-white rounded-xl shadow-[0_20px_40px_rgba(16,23,42,0.15)] border border-[#e2e5f6] w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-150">

@@ -45,6 +45,7 @@ export interface BackendUserDto {
   username: string;
   globalRole: 'admin' | 'user';
   disabled?: boolean;
+  deletedAt?: string | null;
   createdAt?: string;
 }
 
@@ -174,6 +175,7 @@ export function mapBackendUserToProfile(u: BackendUserDto): UserProfile {
     title: u.globalRole === 'admin' ? 'System Administrator' : 'Database Engineer',
     avatarUrl: '',
     disabled: u.disabled,
+    deletedAt: u.deletedAt ?? null,
     createdAt: u.createdAt,
   };
 }
@@ -650,6 +652,28 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
         return client.request<{ temporaryPassword: string }>(`/api/admin/users/${userId}/reset-password`, {
           method: 'POST',
         });
+      },
+
+      async deleteUser(userId: string): Promise<ServiceOperationResult<{ success: boolean; user: UserProfile }>> {
+        const res = await client.request<{ success: boolean; user: BackendUserDto }>(`/api/admin/users/${userId}`, {
+          method: 'DELETE',
+        });
+        if (res.ok && res.data) {
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: {
+              success: res.data.success,
+              user: mapBackendUserToProfile(res.data.user),
+            },
+          };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
+        };
       },
 
       async listAuditLogs(query?: { limit?: number; before?: number }): Promise<ServiceOperationResult<any[]>> {

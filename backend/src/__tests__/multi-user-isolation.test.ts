@@ -40,6 +40,7 @@ interface UserRecord {
   username: string;
   globalRole: 'user' | 'admin';
   disabled: boolean;
+  deletedAt?: Date | string | null;
 }
 
 interface RepoRecord {
@@ -169,7 +170,7 @@ function buildMockContainer(env: Env, logger: Logger): Container {
     },
     loadActiveUser: async (userId: string) => {
       const u = users.get(userId);
-      if (!u || u.disabled) throw unauthorized('USER_DISABLED', 'Account disabled');
+      if (!u || u.disabled || u.deletedAt) throw unauthorized('USER_DISABLED', 'Account disabled');
       return u;
     },
     me: async (userId: string) => {
@@ -225,6 +226,26 @@ function buildMockContainer(env: Env, logger: Logger): Container {
       const u = users.get(userId);
       if (!u) throw notFound('User');
       return { temporaryPassword: 'Vdb!ResetPass123' };
+    },
+    adminDeleteUser: async (actor: Actor, userId: string) => {
+      if (actor.globalRole !== 'admin') throw forbidden('FORBIDDEN', 'Administrative privileges required');
+      if (actor.userId === userId) {
+        throw forbidden('SELF_DELETION_FORBIDDEN', 'Administrators cannot delete their own accounts');
+      }
+      const u = users.get(userId);
+      if (!u) throw notFound('User');
+      if (u.deletedAt) throw conflict('USER_ALREADY_DELETED', 'User account is already deleted');
+      if (u.globalRole === 'admin') {
+        const activeAdmins = [...users.values()].filter((x) => x.globalRole === 'admin' && !x.disabled && !x.deletedAt);
+        if (activeAdmins.length <= 1) {
+          throw conflict('LAST_ADMIN', 'Cannot delete the last remaining active platform admin');
+        }
+      }
+      u.deletedAt = new Date();
+      u.disabled = true;
+      u.email = `deleted_${u.id.slice(0, 8)}@deleted.versiondb.local`;
+      u.username = `deleted_${u.id.slice(0, 8)}`;
+      return { success: true, user: { id: u.id, email: u.email, username: u.username, globalRole: u.globalRole, disabled: true, deletedAt: u.deletedAt } };
     },
     adminListAuditLogs: async (actor: Actor) => {
       if (actor.globalRole !== 'admin') throw forbidden('FORBIDDEN', 'Administrative privileges required');
@@ -767,5 +788,48 @@ describe('Multi-User Isolation & RBAC Regression', () => {
     assert.equal(resetRes.status, 200);
     const body: any = await resetRes.json();
     assert.ok(body.temporaryPassword);
+  });
+
+  it('Admin cannot delete their own account — returns 403', async () => {
+    const res = await fetch(`${baseUrl}/api/admin/users/${ADMIN_ID}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer uid:${ADMIN_ID}` },
+    });
+    assert.equal(res.status, 403);
+    const body: any = await res.json();
+    assert.equal(body.error?.code, 'SELF_DELETION_FORBIDDEN');
+  });
+
+  it('Non-admin (Alice) cannot delete a user — returns 403', async () => {
+    const res = await fetch(`${baseUrl}/api/admin/users/${BOB_ID}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer uid:${ALICE_ID}` },
+    });
+    assert.equal(res.status, 403);
+  });
+
+  it('Admin can delete user (Bob) — anonymizes, archives, and revokes access', async () => {
+    const delRes = await fetch(`${baseUrl}/api/admin/users/${BOB_ID}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer uid:${ADMIN_ID}` },
+    });
+    assert.equal(delRes.status, 200);
+    const body: any = await delRes.json();
+    assert.equal(body.success, true);
+    assert.ok(body.user.deletedAt);
+    assert.equal(body.user.disabled, true);
+
+    // Deleted user cannot authenticate
+    const accessRes = await fetch(`${baseUrl}/api/repos`, {
+      headers: { Authorization: `Bearer uid:${BOB_ID}` },
+    });
+    assert.equal(accessRes.status, 401);
+
+    // Deleting again returns 409 USER_ALREADY_DELETED
+    const repeatDel = await fetch(`${baseUrl}/api/admin/users/${BOB_ID}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer uid:${ADMIN_ID}` },
+    });
+    assert.equal(repeatDel.status, 409);
   });
 });
