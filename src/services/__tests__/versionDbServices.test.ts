@@ -466,19 +466,6 @@ describe('VersionDB Production Service Architecture & Error Handling', () => {
     assert.equal(auditExportRes.ok, false);
     assert.ok(auditExportRes.error?.includes('not implemented'));
 
-    const mrRes = await services.mergeRequests.createMergeRequest(
-      {
-        repositoryId: 'repo-1',
-        title: 'Feature MR',
-        description: 'None',
-        sourceBranch: 'feat',
-        targetBranch: 'main',
-      },
-      'token-123'
-    );
-    assert.equal(mrRes.ok, false);
-    assert.ok(mrRes.error?.includes('not implemented'));
-
     const rollbackRes = await services.governance.executeRollback(
       { snapshotId: 'snap-1', reason: 'Revert' },
       'token-123'

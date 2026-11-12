@@ -105,6 +105,62 @@ export interface BackendWorkingChangeDto {
   updatedAt: string;
 }
 
+export interface BackendMergeRequestDto {
+  id: string;
+  repoId: string;
+  number: number;
+  title: string;
+  description: string;
+  sourceBranchId: string | null;
+  targetBranchId: string | null;
+  sourceBranchName: string;
+  targetBranchName: string;
+  authorId: string;
+  authorName?: string | null;
+  status: 'open' | 'merged' | 'closed';
+  baseCommitId: string | null;
+  sourceHeadCommitId: string;
+  targetHeadCommitId: string;
+  hasConflicts: boolean;
+  resolutionRev: number;
+  mergeId: string | null;
+  mergedBy: string | null;
+  mergedAt: string | null;
+  closedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BackendConflictDto {
+  id: string;
+  mergeRequestId: string;
+  path: string;
+  baseExists: boolean;
+  baseValue: unknown;
+  oursExists: boolean;
+  oursValue: unknown;
+  theirsExists: boolean;
+  theirsValue: unknown;
+  resolution: 'ours' | 'theirs' | 'manual' | null;
+  resolvedExists: boolean | null;
+  resolvedValue: unknown;
+  resolvedBy: string | null;
+  resolvedAt: string | null;
+  detectedAt: string;
+}
+
+export interface BackendMergeApprovalDto {
+  id: string;
+  mergeRequestId: string;
+  reviewerId: string;
+  reviewerName?: string | null;
+  decision: 'approved' | 'changes_requested';
+  comment: string;
+  sourceHeadCommitId: string;
+  resolutionRev: number;
+  createdAt: string;
+}
+
 // --- Mappers between backend entities and frontend UI types ---
 
 export function mapBackendUserToProfile(u: BackendUserDto): UserProfile {
@@ -222,6 +278,103 @@ export function mapBackendCommitToRecord(
     status: 'Checks Passed',
     ddlPreview: '',
     dmlCount: mutationsCount,
+  };
+}
+
+export function mapBackendMergeRequestToRecord(
+  mr: BackendMergeRequestDto,
+  approvalsCount = 0,
+  requiredApprovals = 1,
+  conflictIds: string[] = [],
+): MergeRequest {
+  let status: MergeRequest['status'] = 'OPEN';
+  if (mr.status === 'merged') {
+    status = 'MERGED';
+  } else if (mr.status === 'closed') {
+    status = 'CLOSED';
+  } else if (mr.hasConflicts) {
+    status = 'CONFLICT';
+  } else if (approvalsCount >= requiredApprovals) {
+    status = 'READY';
+  } else {
+    status = 'OPEN';
+  }
+
+  return {
+    id: mr.id,
+    number: mr.number,
+    title: mr.title,
+    description: mr.description,
+    sourceBranch: mr.sourceBranchName,
+    sourceCommit: mr.sourceHeadCommitId.replace(/-/g, '').slice(0, 8),
+    targetBranch: mr.targetBranchName,
+    targetCommit: mr.targetHeadCommitId.replace(/-/g, '').slice(0, 8),
+    isProtectedTarget: mr.targetBranchName === 'main',
+    authorHandle: mr.authorName || 'user',
+    authorName: mr.authorName || 'VersionDB User',
+    authorAvatar: '',
+    createdAtRelative: new Date(mr.createdAt).toLocaleDateString(),
+    status,
+    approvalsCount,
+    requiredApprovals,
+    reviewers: [],
+    conflictIds,
+    ddlChangesCount: 0,
+    rowsAddedCount: 0,
+    rowsModifiedCount: 0,
+    rowsDeletedCount: 0,
+    requiresAdminApproval: mr.targetBranchName === 'main',
+    integrityChecksPassed: !mr.hasConflicts,
+  };
+}
+
+export function mapBackendConflictToItem(
+  c: BackendConflictDto,
+  mrNumber: number,
+  sourceBranch: string,
+  targetBranch: string,
+): ConflictItem {
+  const parts = c.path.split('/').filter(Boolean);
+  const table = parts[0] || 'records';
+  const pk = parts[1] || 'pk';
+  const fieldName = parts[2] || 'value';
+
+  const oursValStr = typeof c.oursValue === 'object' && c.oursValue !== null
+    ? JSON.stringify(c.oursValue)
+    : String(c.oursValue ?? '(none)');
+  const theirsValStr = typeof c.theirsValue === 'object' && c.theirsValue !== null
+    ? JSON.stringify(c.theirsValue)
+    : String(c.theirsValue ?? '(none)');
+
+  return {
+    id: c.id,
+    mrNumber,
+    mrTitle: `MR #${mrNumber}`,
+    mrHexId: c.mergeRequestId.replace(/-/g, '').slice(0, 8),
+    sourceBranch,
+    sourceCommit: '',
+    sourceAuthor: 'Contributor',
+    targetBranch,
+    targetCommit: '',
+    targetAuthor: 'Maintainer',
+    table,
+    primaryKeyField: 'id',
+    primaryKeyValue: pk,
+    recordContextLabel: `${table}/${pk}`,
+    conflictType: 'RECORD_COLLISION',
+    oursComplianceNote: 'Target branch state',
+    theirsMigrationNote: 'Incoming branch mutation',
+    fields: [
+      {
+        field: fieldName,
+        isConflicted: c.resolution === null,
+        oursValue: oursValStr,
+        theirsValue: theirsValStr,
+      },
+    ],
+    resolved: c.resolution !== null,
+    resolutionMode: c.resolution ? (c.resolution.toUpperCase() as 'OURS' | 'THEIRS' | 'MANUAL') : undefined,
+    resolvedValues: c.resolvedValue ? { [fieldName]: String(c.resolvedValue) } : undefined,
   };
 }
 
@@ -552,6 +705,7 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
         let members: UserProfile[] = [];
         let tables: TableSchema[] = [];
         let commits: CommitRecord[] = [];
+        let mergeRequests: MergeRequest[] = [];
 
         if (repositories.length > 0) {
           const primaryRepo =
@@ -611,6 +765,15 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
           if (historyRes.ok && historyRes.data?.commits) {
             commits = historyRes.data.commits.map((c) => mapBackendCommitToRecord(c, targetBranch));
           }
+
+          // Fetch merge requests for primary repo
+          const mrRes = await client.request<{ mergeRequests: BackendMergeRequestDto[] }>(
+            `/api/repos/${primaryRepo.id}/merge-requests`,
+            { method: 'GET', sessionToken, signal }
+          );
+          if (mrRes.ok && mrRes.data?.mergeRequests) {
+            mergeRequests = mrRes.data.mergeRequests.map((mr) => mapBackendMergeRequestToRecord(mr));
+          }
         }
 
         return {
@@ -622,7 +785,7 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
             tables,
             views: [],
             commits,
-            mergeRequests: [],
+            mergeRequests,
             conflicts: [],
             adminApprovals: [],
             snapshots: [],
@@ -1381,55 +1544,203 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
 
     mergeRequests: {
       async createMergeRequest(
-        _payload: {
+        payload: {
           repositoryId: string;
           title: string;
           description: string;
           sourceBranch: string;
           targetBranch: string;
         },
-        _sessionToken?: string | null
+        sessionToken?: string | null
       ): Promise<ServiceOperationResult<MergeRequest>> {
+        const res = await client.request<{ mergeRequest: BackendMergeRequestDto }>(
+          `/api/repos/${payload.repositoryId}/merge-requests`,
+          {
+            method: 'POST',
+            body: {
+              title: payload.title,
+              description: payload.description,
+              sourceBranch: payload.sourceBranch,
+              targetBranch: payload.targetBranch,
+            },
+            sessionToken,
+          }
+        );
+        if (res.ok && res.data) {
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: mapBackendMergeRequestToRecord(res.data.mergeRequest),
+          };
+        }
         return {
           ok: false,
-          errorCode: 'SERVER_ERROR',
-          error:
-            'Merge Requests API is not implemented in the VersionDB backend. Endpoints for creating and reviewing merge requests are pending specification.',
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
         };
       },
+
+      async listMergeRequests(
+        repoId: string,
+        status?: string,
+        sessionToken?: string | null
+      ): Promise<ServiceOperationResult<MergeRequest[]>> {
+        const query = status ? `?status=${encodeURIComponent(status)}` : '';
+        const res = await client.request<{ mergeRequests: BackendMergeRequestDto[] }>(
+          `/api/repos/${repoId}/merge-requests${query}`,
+          { method: 'GET', sessionToken }
+        );
+        if (res.ok && res.data) {
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: res.data.mergeRequests.map((mr) => mapBackendMergeRequestToRecord(mr)),
+          };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
+        };
+      },
+
+      async getMergeRequest(
+        repoId: string,
+        mrNumber: number,
+        sessionToken?: string | null
+      ): Promise<
+        ServiceOperationResult<{
+          mergeRequest: MergeRequest;
+          approvals: BackendMergeApprovalDto[];
+          conflicts: ConflictItem[];
+        }>
+      > {
+        const res = await client.request<{
+          mergeRequest: BackendMergeRequestDto;
+          approvals: BackendMergeApprovalDto[];
+          conflicts: BackendConflictDto[];
+        }>(`/api/repos/${repoId}/merge-requests/${mrNumber}`, {
+          method: 'GET',
+          sessionToken,
+        });
+        if (res.ok && res.data) {
+          const mr = res.data.mergeRequest;
+          const approvals = res.data.approvals || [];
+          const conflictDtos = res.data.conflicts || [];
+          const conflictItems = conflictDtos.map((c) =>
+            mapBackendConflictToItem(c, mr.number, mr.sourceBranchName, mr.targetBranchName)
+          );
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: {
+              mergeRequest: mapBackendMergeRequestToRecord(
+                mr,
+                approvals.filter((a) => a.decision === 'approved').length,
+                1,
+                conflictItems.map((c) => c.id)
+              ),
+              approvals,
+              conflicts: conflictItems,
+            },
+          };
+        }
+        return {
+          ok: false,
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
+        };
+      },
+
       async approveMergeRequest(
-        _mrNumber: number,
-        _sessionToken?: string | null
+        repoId: string,
+        mrNumber: number,
+        sessionToken?: string | null
       ): Promise<ServiceOperationResult<MergeRequest>> {
+        const res = await client.request<{ approval: BackendMergeApprovalDto }>(
+          `/api/repos/${repoId}/merge-requests/${mrNumber}/reviews`,
+          {
+            method: 'POST',
+            body: { decision: 'approved', comment: 'Approved via VersionDB review interface' },
+            sessionToken,
+          }
+        );
+        if (res.ok) {
+          const details = await this.getMergeRequest(repoId, mrNumber, sessionToken);
+          if (details.ok && details.data) {
+            return { ok: true, statusCode: res.statusCode, data: details.data.mergeRequest };
+          }
+        }
         return {
           ok: false,
-          errorCode: 'SERVER_ERROR',
-          error: 'Merge Request approval is not implemented in the VersionDB backend.',
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
         };
       },
+
       async mergeBranch(
-        _mrNumber: number,
-        _sessionToken?: string | null
+        repoId: string,
+        mrNumber: number,
+        sessionToken?: string | null
       ): Promise<ServiceOperationResult<MergeRequest>> {
+        const res = await client.request<{ mergeRequest: BackendMergeRequestDto }>(
+          `/api/repos/${repoId}/merge-requests/${mrNumber}/merge`,
+          { method: 'POST', sessionToken }
+        );
+        if (res.ok && res.data) {
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: mapBackendMergeRequestToRecord(res.data.mergeRequest),
+          };
+        }
         return {
           ok: false,
-          errorCode: 'SERVER_ERROR',
-          error: 'Merge execution is not implemented in the VersionDB backend.',
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
         };
       },
+
       async resolveConflict(
-        _payload: {
+        payload: {
+          repositoryId: string;
+          mrNumber: number;
           conflictId: string;
           mode: 'OURS' | 'THEIRS' | 'MANUAL';
           manualValues?: Record<string, string>;
           auditNote?: string;
         },
-        _sessionToken?: string | null
+        sessionToken?: string | null
       ): Promise<ServiceOperationResult<ConflictItem>> {
+        const res = await client.request<{ conflict: BackendConflictDto }>(
+          `/api/repos/${payload.repositoryId}/merge-requests/${payload.mrNumber}/conflicts/${payload.conflictId}/resolve`,
+          {
+            method: 'POST',
+            body: {
+              resolution: payload.mode.toLowerCase(),
+              manualValue: payload.manualValues,
+              auditNote: payload.auditNote,
+            },
+            sessionToken,
+          }
+        );
+        if (res.ok && res.data) {
+          return {
+            ok: true,
+            statusCode: res.statusCode,
+            data: mapBackendConflictToItem(res.data.conflict, payload.mrNumber, 'source', 'target'),
+          };
+        }
         return {
           ok: false,
-          errorCode: 'SERVER_ERROR',
-          error: 'Conflict resolution API is not implemented in the VersionDB backend.',
+          statusCode: res.statusCode,
+          errorCode: res.errorCode,
+          error: res.error,
         };
       },
     },
