@@ -13,8 +13,8 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx --test src/services/__tests__/versionDbServices.test.ts backend/src/__tests__/auth-error-handling.test.ts backend/src/__tests__/branch-creation.test.ts backend/src/__tests__/rollback.test.ts backend/src/__tests__/sql-executor.test.ts backend/src/__tests__/storage-compression.test.ts backend/src/__tests__/garbage-collection.test.ts backend/src/__tests__/cache-consistency.test.ts",
-    "test:backend": "tsx --test backend/src/__tests__/auth-error-handling.test.ts backend/src/__tests__/branch-creation.test.ts backend/src/__tests__/rollback.test.ts backend/src/__tests__/storage-compression.test.ts backend/src/__tests__/garbage-collection.test.ts backend/src/__tests__/cache-consistency.test.ts"
+    "test": "tsx --test src/services/__tests__/versionDbServices.test.ts backend/src/__tests__/auth-error-handling.test.ts backend/src/__tests__/branch-creation.test.ts backend/src/__tests__/rollback.test.ts backend/src/__tests__/sql-executor.test.ts backend/src/__tests__/storage-compression.test.ts backend/src/__tests__/garbage-collection.test.ts backend/src/__tests__/cache-consistency.test.ts backend/src/__tests__/merge-engine.test.ts backend/src/__tests__/merge-service.test.ts backend/src/__tests__/commit-parents-immutability.test.ts",
+    "test:backend": "tsx --test backend/src/__tests__/auth-error-handling.test.ts backend/src/__tests__/branch-creation.test.ts backend/src/__tests__/rollback.test.ts backend/src/__tests__/storage-compression.test.ts backend/src/__tests__/garbage-collection.test.ts backend/src/__tests__/cache-consistency.test.ts backend/src/__tests__/merge-engine.test.ts backend/src/__tests__/merge-service.test.ts backend/src/__tests__/commit-parents-immutability.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
