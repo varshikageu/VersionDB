@@ -42,7 +42,8 @@ export function buildContainer(env: Env, logger: Logger, overrides: { storage?: 
   const members = new MemberService(uow, audit);
   const snapshots = new SnapshotLoader(uow, storage, cache);
   const history = new HistoryService(uow, members);
-  const sql = new SqlExecutorService(uow, members, history, snapshots);
+  const records = new RecordService(uow, members, history, snapshots);
+  const sql = new SqlExecutorService(uow, members, history, snapshots, records);
   const mergeRequests = new MergeRequestService(uow, storage, members, snapshots, audit);
 
   return {
@@ -53,7 +54,7 @@ export function buildContainer(env: Env, logger: Logger, overrides: { storage?: 
       members,
       repositories: new RepositoryService(uow, storage, env, audit, members),
       history,
-      records: new RecordService(uow, members, history, snapshots),
+      records,
       commits: new CommitService(uow, storage, members, snapshots, audit),
       idempotency: new IdempotencyService(uow, env.IDEMPOTENCY_TTL_SECONDS),
       sql,
