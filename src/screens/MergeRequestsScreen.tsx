@@ -204,6 +204,27 @@ export const MergeRequestsScreen: React.FC = () => {
                   <span className="text-[#10172a] font-medium">{activeMr.targetBranch}</span>
                 </div>
                 <p className="text-[13px] text-[#5263a0] leading-relaxed">{activeMr.description}</p>
+
+                {/* Ready / Awaiting Merge Status */}
+                {activeMr.status === 'READY' && (
+                  <div className="p-3.5 rounded-lg bg-blue-50 border border-blue-200 text-[12px] text-blue-900 flex items-start gap-2">
+                    <span className="material-symbols-outlined text-[18px] text-blue-600 mt-0.5 shrink-0">check_circle</span>
+                    <div>
+                      <strong>Merge Request Ready:</strong> All required review approvals have been granted. Awaiting Maintainer or Owner to execute the merge into <code>{activeMr.targetBranch}</code>.
+                    </div>
+                  </div>
+                )}
+
+                {/* Merged Status */}
+                {activeMr.status === 'MERGED' && (
+                  <div className="p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[12px] text-emerald-900 flex items-start gap-2">
+                    <span className="material-symbols-outlined text-[18px] text-emerald-600 mt-0.5 shrink-0">task_alt</span>
+                    <div>
+                      <strong>Merged:</strong> This merge request has been successfully integrated into <code>{activeMr.targetBranch}</code>.
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex flex-wrap items-center gap-2.5 pt-3 border-t border-[#f1f3fb]">
                   {roleCapabilities.canReviewAndApproveMr ? (
                     <button
@@ -241,11 +262,11 @@ export const MergeRequestsScreen: React.FC = () => {
                     <button
                       type="button"
                       disabled
-                      title="Executing merges requires Admin authorization"
+                      title="Executing merges requires Maintainer or Owner authorization"
                       className="btn-primary text-[12px] py-1.5 opacity-50 cursor-not-allowed bg-slate-400"
                     >
                       <span className="material-symbols-outlined text-[15px]">lock</span>
-                      Merge (Admin Required)
+                      Merge (Maintainer / Owner Required)
                     </button>
                   )}
 
