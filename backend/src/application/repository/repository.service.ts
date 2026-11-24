@@ -30,7 +30,7 @@ export class RepositoryService {
         await repos.branches.protect(repo.id, DEFAULT_BRANCH, this.env.DEFAULT_REQUIRED_APPROVALS);
         await this.storage.initRepository(repo.id);
 
-        // Bootstrap: create the initial empty commit so main always has a valid head.
+        // Bootstrap: create the initial empty commit to ensure main has a valid head.
         const snapshotInfo = await this.storage.putSnapshot(repo.id, EMPTY_SNAPSHOT);
         await repos.commits.registerSnapshot(repo.id, snapshotInfo.hash, snapshotInfo.recordCount, snapshotInfo.sizeBytes);
         const initialCommit = await repos.commits.insert({
