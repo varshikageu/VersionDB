@@ -82,7 +82,7 @@ export const ROLE_UI_CAPABILITIES: Record<
     canReviewAndApproveMr: true,
     canResolveConflicts: true,
     canAdminApproveEscalation: false,
-    canMergeProtectedMain: true,
+    canMergeProtectedMain: false,
     canExecuteRollback: false,
     canManageMembers: false,
     canDeleteBranch: false,

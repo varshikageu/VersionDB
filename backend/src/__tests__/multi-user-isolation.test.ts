@@ -455,6 +455,20 @@ function buildMockContainer(env: Env, logger: Logger): Container {
       approvalsStore.set(mr.id, existing);
       return approval;
     },
+    merge: async (actor: Actor, repoId: string, mrNumber: number) => {
+      const { role } = authorizeRepo(actor, repoId, 'maintainer');
+      const mr = [...mergeRequestsStore.values()].find((m) => m.repoId === repoId && m.number === mrNumber);
+      if (!mr) throw notFound('Merge request');
+      if (mr.status !== 'open') throw conflict('NOT_OPEN', `Merge request #${mrNumber} is ${mr.status}`);
+
+      const approvals = (approvalsStore.get(mr.id) ?? []).filter((a) => a.decision === 'approved');
+      if (approvals.length < 1) {
+        throw conflict('INSUFFICIENT_APPROVALS', 'Merge request requires at least 1 approval(s)');
+      }
+
+      mr.status = 'merged';
+      return { mergeRequest: mr, mergeRecord: { id: crypto.randomUUID(), mergedAt: new Date().toISOString() } };
+    },
   };
 
   const mockContainer: Container = {
@@ -1312,7 +1326,46 @@ describe('Multi-User Isolation & RBAC Regression', () => {
     assert.equal(detailsBody.approvals[0].reviewerId, bbobId);
     assert.equal(detailsBody.approvals[0].decision, 'approved');
 
-    // 12. Edge Case: MR from unrelated repository must not appear for bbob
+    // 12. Reviewer (bbob) attempts to execute merge -> Rejected with HTTP 403 (requires maintainer or owner)
+    const bbobMergeAttempt = await fetch(`${baseUrl}/api/repos/${jackRepoId}/merge-requests/1/merge`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer uid:${bbobId}` },
+    });
+    assert.equal(bbobMergeAttempt.status, 403);
+    const bbobMergeBody: any = await bbobMergeAttempt.json();
+    assert.equal(bbobMergeBody.error?.code, 'FORBIDDEN');
+    assert.ok(
+      bbobMergeBody.error?.message?.toLowerCase().includes('maintainer'),
+      'Message specifies maintainer requirement'
+    );
+
+    // 13. Verify failed merge attempt preserved MR status and approvals
+    const mrAfterFailedMerge = await fetch(`${baseUrl}/api/repos/${jackRepoId}/merge-requests/1`, {
+      headers: { Authorization: `Bearer uid:${jackId}` },
+    });
+    assert.equal(mrAfterFailedMerge.status, 200);
+    const afterFailedBody: any = await mrAfterFailedMerge.json();
+    assert.equal(afterFailedBody.mergeRequest.status, 'open', 'MR remains open after failed merge');
+    assert.equal(afterFailedBody.approvals.length, 1, 'MR approvals remain intact');
+
+    // 14. Owner (Jack) executes the merge -> Succeeds (since Jack is owner and required approvals met)
+    const jackMergeRes = await fetch(`${baseUrl}/api/repos/${jackRepoId}/merge-requests/1/merge`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer uid:${jackId}` },
+    });
+    assert.equal(jackMergeRes.status, 200);
+    const jackMergeBody: any = await jackMergeRes.json();
+    assert.equal(jackMergeBody.mergeRequest.status, 'merged');
+
+    // 15. Verify MR is now merged in list and details
+    const mrMergedDetails = await fetch(`${baseUrl}/api/repos/${jackRepoId}/merge-requests/1`, {
+      headers: { Authorization: `Bearer uid:${jackId}` },
+    });
+    assert.equal(mrMergedDetails.status, 200);
+    const mergedDetailsBody: any = await mrMergedDetails.json();
+    assert.equal(mergedDetailsBody.mergeRequest.status, 'merged');
+
+    // 16. Edge Case: MR from unrelated repository must not appear for bbob
     // Create unrelated repo owned by Alice where bbob is NOT a member
     const unrelatedRepoRes = await fetch(`${baseUrl}/api/repos`, {
       method: 'POST',
@@ -1477,5 +1530,118 @@ describe('Multi-User Isolation & RBAC Regression', () => {
     assert.equal(mrDetailsBody.approvals.length, 1);
     assert.equal(mrDetailsBody.approvals[0].reviewerId, userBbobId);
     assert.equal(mrDetailsBody.approvals[0].decision, 'approved');
+  });
+
+  it('Test H: Maintainer can merge approved MR, and unapproved MR merge is rejected', async () => {
+    const ownerId = crypto.randomUUID();
+    const maintainerId = crypto.randomUUID();
+    const reviewerId = crypto.randomUUID();
+
+    users.set(ownerId, {
+      id: ownerId,
+      email: 'owner_h@versiondb.local',
+      username: 'OwnerH',
+      globalRole: 'developer',
+      disabled: false,
+    });
+    users.set(maintainerId, {
+      id: maintainerId,
+      email: 'maintainer_h@versiondb.local',
+      username: 'MaintainerH',
+      globalRole: 'developer',
+      disabled: false,
+    });
+    users.set(reviewerId, {
+      id: reviewerId,
+      email: 'reviewer_h@versiondb.local',
+      username: 'ReviewerH',
+      globalRole: 'reviewer',
+      disabled: false,
+    });
+
+    // 1. Owner creates repository
+    const repoRes = await fetch(`${baseUrl}/api/repos`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${ownerId}`,
+      },
+      body: JSON.stringify({ name: 'repo-h', description: 'Testing maintainer merge' }),
+    });
+    assert.equal(repoRes.status, 201);
+    const repoBody: any = await repoRes.json();
+    const repoId = repoBody.repository.id;
+
+    // 2. Add maintainer and reviewer to repo
+    const addMaintainer = await fetch(`${baseUrl}/api/repos/${repoId}/members`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${ownerId}`,
+      },
+      body: JSON.stringify({ email: 'maintainer_h@versiondb.local', role: 'maintainer' }),
+    });
+    assert.equal(addMaintainer.status, 204);
+
+    const addReviewer = await fetch(`${baseUrl}/api/repos/${repoId}/members`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${ownerId}`,
+      },
+      body: JSON.stringify({ email: 'reviewer_h@versiondb.local', role: 'reviewer' }),
+    });
+    assert.equal(addReviewer.status, 204);
+
+    // 3. Maintainer creates MR
+    const mrRes = await fetch(`${baseUrl}/api/repos/${repoId}/merge-requests`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${maintainerId}`,
+      },
+      body: JSON.stringify({
+        title: 'Maintainer change',
+        sourceBranch: 'feat-maintainer',
+        targetBranch: 'main',
+      }),
+    });
+    assert.equal(mrRes.status, 201);
+
+    // 4. Attempt merge before approval -> Rejected with 409 INSUFFICIENT_APPROVALS
+    const earlyMergeRes = await fetch(`${baseUrl}/api/repos/${repoId}/merge-requests/1/merge`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer uid:${maintainerId}` },
+    });
+    assert.equal(earlyMergeRes.status, 409);
+    const earlyMergeBody: any = await earlyMergeRes.json();
+    assert.equal(earlyMergeBody.error?.code, 'INSUFFICIENT_APPROVALS');
+
+    // 5. Reviewer approves MR
+    const approveRes = await fetch(`${baseUrl}/api/repos/${repoId}/merge-requests/1/reviews`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${reviewerId}`,
+      },
+      body: JSON.stringify({ decision: 'approved', comment: 'LGTM' }),
+    });
+    assert.equal(approveRes.status, 201);
+
+    // 6. Reviewer still cannot merge -> 403
+    const reviewerMergeRes = await fetch(`${baseUrl}/api/repos/${repoId}/merge-requests/1/merge`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer uid:${reviewerId}` },
+    });
+    assert.equal(reviewerMergeRes.status, 403);
+
+    // 7. Maintainer merges -> 200 OK
+    const maintainerMergeRes = await fetch(`${baseUrl}/api/repos/${repoId}/merge-requests/1/merge`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer uid:${maintainerId}` },
+    });
+    assert.equal(maintainerMergeRes.status, 200);
+    const maintainerMergeBody: any = await maintainerMergeRes.json();
+    assert.equal(maintainerMergeBody.mergeRequest.status, 'merged');
   });
 });

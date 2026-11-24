@@ -337,6 +337,26 @@ export const ReviewerDashboardScreen: React.FC = () => {
                   </div>
                 )}
 
+                {/* Ready / Awaiting Merge Status */}
+                {activeMr.status === 'READY' && (
+                  <div className="p-3.5 rounded-lg bg-blue-50 border border-blue-200 text-[12px] text-blue-900 flex items-start gap-2">
+                    <span className="material-symbols-outlined text-[18px] text-blue-600 mt-0.5 shrink-0">check_circle</span>
+                    <div>
+                      <strong>Merge Request Ready:</strong> All required review approvals have been granted. Awaiting Maintainer or Owner to execute the merge into <code>{activeMr.targetBranch}</code>.
+                    </div>
+                  </div>
+                )}
+
+                {/* Merged Status */}
+                {activeMr.status === 'MERGED' && (
+                  <div className="p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[12px] text-emerald-900 flex items-start gap-2">
+                    <span className="material-symbols-outlined text-[18px] text-emerald-600 mt-0.5 shrink-0">task_alt</span>
+                    <div>
+                      <strong>Merged:</strong> This merge request has been successfully integrated into <code>{activeMr.targetBranch}</code>.
+                    </div>
+                  </div>
+                )}
+
                 {/* Reviewer Action Buttons */}
                 <div className="pt-3 border-t border-[#f1f3fb] space-y-3">
                   <div className="flex flex-wrap items-center gap-2.5">
@@ -345,7 +365,7 @@ export const ReviewerDashboardScreen: React.FC = () => {
                         type="button"
                         disabled={isOperationPending || activeMr.status === 'MERGED'}
                         onClick={() => void approveMergeRequest(activeMr.number)}
-                        className="btn-primary text-[12px] py-2 px-3.5 bg-emerald-600 hover:bg-emerald-700"
+                        className="btn-primary text-[12px] py-2 px-3.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <span className="material-symbols-outlined text-[16px]">check_circle</span>
                         Approve Pull Request
@@ -354,8 +374,9 @@ export const ReviewerDashboardScreen: React.FC = () => {
 
                     <button
                       type="button"
+                      disabled={isOperationPending || activeMr.status === 'MERGED'}
                       onClick={() => setShowRejectInput((prev) => (prev === activeMr.number ? null : activeMr.number))}
-                      className="btn-secondary text-[12px] py-2 px-3.5 text-amber-700 hover:bg-amber-50 border-amber-200"
+                      className="btn-secondary text-[12px] py-2 px-3.5 text-amber-700 hover:bg-amber-50 border-amber-200 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <span className="material-symbols-outlined text-[16px]">rate_review</span>
                       Request Changes

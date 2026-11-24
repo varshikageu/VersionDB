@@ -1730,7 +1730,7 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
       ): Promise<ServiceOperationResult<MergeRequest>> {
         const res = await client.request<{ mergeRequest: BackendMergeRequestDto }>(
           `/api/repos/${repoId}/merge-requests/${mrNumber}/merge`,
-          { method: 'POST', sessionToken }
+          { method: 'POST', sessionToken, silent: true }
         );
         if (res.ok && res.data) {
           return {
