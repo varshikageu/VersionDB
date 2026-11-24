@@ -120,6 +120,8 @@ export interface Repository {
   latestSnapshotRef: string;
   replicaBufferHealthPct: number;
   role?: string;
+  ownerId?: string;
+  ownerName?: string;
 }
 
 export interface ColumnDef {

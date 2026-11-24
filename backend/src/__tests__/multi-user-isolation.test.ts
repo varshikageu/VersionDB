@@ -38,7 +38,7 @@ interface UserRecord {
   id: string;
   email: string;
   username: string;
-  globalRole: 'user' | 'admin';
+  globalRole: 'admin' | 'developer' | 'reviewer' | 'viewer' | 'user';
   disabled: boolean;
   deletedAt?: Date | string | null;
 }
@@ -48,17 +48,50 @@ interface RepoRecord {
   name: string;
   description: string;
   ownerId: string;
+  ownerName?: string;
+}
+
+interface TestMrRecord {
+  id: string;
+  repoId: string;
+  number: number;
+  title: string;
+  description: string;
+  sourceBranchName: string;
+  targetBranchName: string;
+  authorId: string;
+  authorName?: string;
+  status: 'open' | 'merged' | 'closed';
+  hasConflicts: boolean;
+  resolutionRev: number;
+  sourceHeadCommitId: string;
+  targetHeadCommitId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface TestApprovalRecord {
+  id: string;
+  mergeRequestId: string;
+  reviewerId: string;
+  decision: 'approved' | 'changes_requested';
+  comment: string;
+  createdAt: string;
 }
 
 const users = new Map<string, UserRecord>();
 const repos = new Map<string, RepoRecord>();
 // repoId -> (userId -> role)
 const memberships = new Map<string, Map<string, RepoRole>>();
+const mergeRequestsStore = new Map<string, TestMrRecord>();
+const approvalsStore = new Map<string, TestApprovalRecord[]>();
 
 function resetState() {
   users.clear();
   repos.clear();
   memberships.clear();
+  mergeRequestsStore.clear();
+  approvalsStore.clear();
 
   // Pre-seed Admin user
   users.set(ADMIN_ID, {
@@ -99,8 +132,16 @@ function resetState() {
 }
 
 function visibleRepos(actor: Actor): RepoRecord[] {
-  if (actor.globalRole === 'admin') return [...repos.values()];
-  return [...repos.values()].filter((r) => memberships.get(r.id)?.has(actor.userId));
+  const all = actor.globalRole === 'admin'
+    ? [...repos.values()]
+    : [...repos.values()].filter((r) => memberships.get(r.id)?.has(actor.userId));
+  return all.map((r) => {
+    const owner = users.get(r.ownerId);
+    return {
+      ...r,
+      ownerName: owner?.username ?? 'unknown',
+    };
+  });
 }
 
 function effectiveRole(actor: Actor, repoId: string): RepoRole | null {
@@ -263,11 +304,13 @@ function buildMockContainer(env: Env, logger: Logger): Container {
 
     create: async (actor: Actor, input: { name: string; description?: string }) => {
       const id = crypto.randomUUID();
+      const user = users.get(actor.userId);
       const repo: RepoRecord = {
         id,
         name: input.name,
         description: input.description ?? '',
         ownerId: actor.userId,
+        ownerName: user?.username ?? 'unknown',
       };
       repos.set(id, repo);
       // Creator automatically receives owner membership
@@ -343,8 +386,74 @@ function buildMockContainer(env: Env, logger: Logger): Container {
       ms.delete(userId);
     },
 
-    authorize: async (actor: Actor, repoId: string, _capability: string) => {
-      return authorizeRepo(actor, repoId, 'viewer');
+    authorize: async (actor: Actor, repoId: string, capability: string) => {
+      const minRole: RepoRole = capability === 'merge:review' ? 'reviewer' : capability === 'merge:create' ? 'maintainer' : 'viewer';
+      return authorizeRepo(actor, repoId, minRole);
+    },
+  };
+
+  const mockMergeRequestService: any = {
+    create: async (actor: Actor, repoId: string, input: any) => {
+      authorizeRepo(actor, repoId, 'maintainer');
+      const id = crypto.randomUUID();
+      const existingInRepo = [...mergeRequestsStore.values()].filter((m) => m.repoId === repoId);
+      const number = existingInRepo.length + 1;
+      const user = users.get(actor.userId);
+      const mr: TestMrRecord = {
+        id,
+        repoId,
+        number,
+        title: input.title,
+        description: input.description ?? '',
+        sourceBranchName: input.sourceBranch,
+        targetBranchName: input.targetBranch,
+        authorId: actor.userId,
+        authorName: user?.username ?? 'author',
+        status: 'open',
+        hasConflicts: false,
+        resolutionRev: 0,
+        sourceHeadCommitId: crypto.randomUUID(),
+        targetHeadCommitId: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      mergeRequestsStore.set(id, mr);
+      return mr;
+    },
+    list: async (actor: Actor, repoId: string, status?: string) => {
+      authorizeRepo(actor, repoId, 'viewer');
+      let mrs = [...mergeRequestsStore.values()].filter((m) => m.repoId === repoId);
+      if (status && status !== 'all' && status !== 'ALL') {
+        mrs = mrs.filter((m) => m.status === status.toLowerCase());
+      }
+      return mrs;
+    },
+    get: async (actor: Actor, repoId: string, mrNumber: number) => {
+      authorizeRepo(actor, repoId, 'viewer');
+      const mr = [...mergeRequestsStore.values()].find((m) => m.repoId === repoId && m.number === mrNumber);
+      if (!mr) throw notFound('Merge request');
+      const approvals = approvalsStore.get(mr.id) ?? [];
+      return { mergeRequest: mr, approvals, conflicts: [] };
+    },
+    review: async (actor: Actor, repoId: string, mrNumber: number, input: any) => {
+      authorizeRepo(actor, repoId, 'reviewer');
+      const mr = [...mergeRequestsStore.values()].find((m) => m.repoId === repoId && m.number === mrNumber);
+      if (!mr) throw notFound('Merge request');
+      if (mr.authorId === actor.userId) {
+        throw forbidden('SELF_REVIEW_FORBIDDEN', 'Authors cannot review their own merge request');
+      }
+      const approval: TestApprovalRecord = {
+        id: crypto.randomUUID(),
+        mergeRequestId: mr.id,
+        reviewerId: actor.userId,
+        decision: input.decision,
+        comment: input.comment ?? '',
+        createdAt: new Date().toISOString(),
+      };
+      const existing = approvalsStore.get(mr.id) ?? [];
+      existing.push(approval);
+      approvalsStore.set(mr.id, existing);
+      return approval;
     },
   };
 
@@ -370,7 +479,7 @@ function buildMockContainer(env: Env, logger: Logger): Container {
         complete: async () => { },
         release: async () => { },
       } as any,
-      mergeRequests: {} as any,
+      mergeRequests: mockMergeRequestService,
     },
   };
 
@@ -831,5 +940,542 @@ describe('Multi-User Isolation & RBAC Regression', () => {
       headers: { Authorization: `Bearer uid:${ADMIN_ID}` },
     });
     assert.equal(repeatDel.status, 409);
+  });
+
+  // -------------------------------------------------------------------------
+  // Regression Tests: Role Assignment, Reviewer Authorization & Lifecycle
+  // -------------------------------------------------------------------------
+
+  it('Test A: Reviewer provisioning stores Reviewer role and authenticated session identifies as Reviewer', async () => {
+    // 1. Provision a new user with 'reviewer' role as Admin
+    const provRes = await fetch(`${baseUrl}/api/admin/users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${ADMIN_ID}`,
+      },
+      body: JSON.stringify({
+        email: 'rev_alice@versiondb.local',
+        username: 'rev_alice',
+        globalRole: 'reviewer',
+        initialPassword: 'ReviewerPass123!',
+      }),
+    });
+    assert.equal(provRes.status, 201);
+    const provBody: any = await provRes.json();
+    assert.equal(provBody.user.globalRole, 'reviewer');
+
+    // 2. Log in using that account and verify session identity
+    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        identifier: 'rev_alice@versiondb.local',
+        password: 'ReviewerPass123!',
+      }),
+    });
+    assert.equal(loginRes.status, 200);
+    const loginBody: any = await loginRes.json();
+    assert.equal(loginBody.user.globalRole, 'reviewer');
+
+    // 3. Authenticated session /me endpoint returns reviewer
+    const meRes = await fetch(`${baseUrl}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${loginBody.token}` },
+    });
+    assert.equal(meRes.status, 200);
+    const meBody: any = await meRes.json();
+    assert.equal(meBody.user.globalRole, 'reviewer');
+  });
+
+  it('Test B: Developer provisioning cannot perform reviewer-only actions without authorization', async () => {
+    // Provision a developer
+    const provRes = await fetch(`${baseUrl}/api/admin/users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${ADMIN_ID}`,
+      },
+      body: JSON.stringify({
+        email: 'dev_user@versiondb.local',
+        username: 'dev_user',
+        globalRole: 'developer',
+      }),
+    });
+    assert.equal(provRes.status, 201);
+    const provBody: any = await provRes.json();
+    assert.equal(provBody.user.globalRole, 'developer');
+
+    // Log in
+    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        identifier: 'dev_user@versiondb.local',
+        password: 'any',
+      }),
+    });
+    assert.equal(loginRes.status, 200);
+    const loginBody: any = await loginRes.json();
+    assert.equal(loginBody.user.globalRole, 'developer');
+  });
+
+  it('Test C: Global roles and repository membership roles are evaluated independently', async () => {
+    // Alice invites a Reviewer to her repo as a viewer (explicit membership takes precedence)
+    const reviewerUserId = crypto.randomUUID();
+    users.set(reviewerUserId, {
+      id: reviewerUserId,
+      email: 'global_reviewer@example.com',
+      username: 'global_reviewer',
+      globalRole: 'reviewer',
+      disabled: false,
+    });
+
+    // Make reviewer an explicit viewer on repo-a
+    memberships.get(REPO_A_ID)!.set(reviewerUserId, 'viewer');
+
+    // Trying to delete repo-a or manage members is forbidden (viewer cannot do it)
+    const delRes = await fetch(`${baseUrl}/api/repos/${REPO_A_ID}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer uid:${reviewerUserId}` },
+    });
+    assert.equal(delRes.status, 403);
+  });
+
+  it('Test D: Deleted and recreated accounts receive fresh identity and role without interference', async () => {
+    const email = 'recreated@versiondb.local';
+
+    // 1. Create first user
+    const user1Res = await fetch(`${baseUrl}/api/admin/users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${ADMIN_ID}`,
+      },
+      body: JSON.stringify({
+        email,
+        username: 'recreated_v1',
+        globalRole: 'developer',
+      }),
+    });
+    assert.equal(user1Res.status, 201);
+    const user1: any = await user1Res.json();
+    const id1 = user1.user.id;
+
+    // 2. Delete/archive the account
+    const delRes = await fetch(`${baseUrl}/api/admin/users/${id1}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer uid:${ADMIN_ID}` },
+    });
+    assert.equal(delRes.status, 200);
+
+    // 3. Provision new account using the exact same email with Reviewer role
+    const user2Res = await fetch(`${baseUrl}/api/admin/users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${ADMIN_ID}`,
+      },
+      body: JSON.stringify({
+        email,
+        username: 'bbob_new',
+        globalRole: 'reviewer',
+      }),
+    });
+    assert.equal(user2Res.status, 201);
+    const user2: any = await user2Res.json();
+    const id2 = user2.user.id;
+
+    // Different UUIDs
+    assert.notEqual(id1, id2);
+    assert.equal(user2.user.globalRole, 'reviewer');
+
+    // Log in with new account
+    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        identifier: email,
+        password: 'any',
+      }),
+    });
+    assert.equal(loginRes.status, 200);
+    const loginBody: any = await loginRes.json();
+    assert.equal(loginBody.user.id, id2);
+    assert.equal(loginBody.user.globalRole, 'reviewer');
+  });
+
+  it('Test E: Role change invalidates cached state and is immediately reflected on fresh auth', async () => {
+    const userRoleTestId = crypto.randomUUID();
+    users.set(userRoleTestId, {
+      id: userRoleTestId,
+      email: 'role_change@versiondb.local',
+      username: 'role_change_user',
+      globalRole: 'developer',
+      disabled: false,
+    });
+
+    // 1. Initial login verifies role as developer
+    const login1 = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        identifier: 'role_change@versiondb.local',
+        password: 'any',
+      }),
+    });
+    assert.equal(login1.status, 200);
+    const body1: any = await login1.json();
+    assert.equal(body1.user.globalRole, 'developer');
+
+    // 2. Admin updates the user role to Reviewer
+    const updateRes = await fetch(`${baseUrl}/api/admin/users/${userRoleTestId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${ADMIN_ID}`,
+      },
+      body: JSON.stringify({ globalRole: 'reviewer' }),
+    });
+    assert.equal(updateRes.status, 200);
+    const updateBody: any = await updateRes.json();
+    assert.equal(updateBody.user.globalRole, 'reviewer');
+
+    // 3. Immediate check via me endpoint reflects updated role
+    const meRes = await fetch(`${baseUrl}/api/auth/me`, {
+      headers: { Authorization: `Bearer uid:${userRoleTestId}` },
+    });
+    assert.equal(meRes.status, 200);
+    const meBody: any = await meRes.json();
+    assert.equal(meBody.user.globalRole, 'reviewer');
+  });
+
+  // -------------------------------------------------------------------------
+  // § 10. End-to-End Merge Request Lifecycle & Reviewer Portal Workflow
+  // -------------------------------------------------------------------------
+
+  it('Test F: Complete MR Lifecycle - Jack creates MR, bbob reviews/approves, and permissions are enforced', async () => {
+    // 1. Admin creates Jack (developer) and bbob (reviewer)
+    const jackId = crypto.randomUUID();
+    const bbobId = crypto.randomUUID();
+    const viewerId = crypto.randomUUID();
+
+    users.set(jackId, {
+      id: jackId,
+      email: 'jack_e2e@versiondb.local',
+      username: 'Jack',
+      globalRole: 'developer',
+      disabled: false,
+    });
+
+    users.set(bbobId, {
+      id: bbobId,
+      email: 'bbob_e2e@versiondb.local',
+      username: 'bbob',
+      globalRole: 'reviewer',
+      disabled: false,
+    });
+
+    users.set(viewerId, {
+      id: viewerId,
+      email: 'viewer_e2e@versiondb.local',
+      username: 'ViewerUser',
+      globalRole: 'viewer',
+      disabled: false,
+    });
+
+    // 2. Jack creates a repository (auto-becomes owner)
+    const repoRes = await fetch(`${baseUrl}/api/repos`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${jackId}`,
+      },
+      body: JSON.stringify({ name: 'jack-feature-repo', description: 'Jack project repo' }),
+    });
+    assert.equal(repoRes.status, 201);
+    const repoBody: any = await repoRes.json();
+    const jackRepoId = repoBody.repository.id;
+
+    // 3. Add bbob as reviewer member to the repo, and viewer as viewer member
+    const addBbobRes = await fetch(`${baseUrl}/api/repos/${jackRepoId}/members`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${jackId}`,
+      },
+      body: JSON.stringify({ email: 'bbob_e2e@versiondb.local', role: 'reviewer' }),
+    });
+    assert.equal(addBbobRes.status, 204);
+
+    const addViewerRes = await fetch(`${baseUrl}/api/repos/${jackRepoId}/members`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${jackId}`,
+      },
+      body: JSON.stringify({ email: 'viewer_e2e@versiondb.local', role: 'viewer' }),
+    });
+    assert.equal(addViewerRes.status, 204);
+
+    // 4. Jack creates a Merge Request
+    const mrCreateRes = await fetch(`${baseUrl}/api/repos/${jackRepoId}/merge-requests`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${jackId}`,
+      },
+      body: JSON.stringify({
+        title: 'Add new user feature',
+        description: 'Implements core feature',
+        sourceBranch: 'feature-user-logic',
+        targetBranch: 'main',
+      }),
+    });
+    assert.equal(mrCreateRes.status, 201);
+    const mrCreateBody: any = await mrCreateRes.json();
+    const mrCreated = mrCreateBody.mergeRequest;
+    assert.equal(mrCreated.number, 1);
+    assert.equal(mrCreated.title, 'Add new user feature');
+    assert.equal(mrCreated.status, 'open');
+
+    // 5. Jack sees the MR in his Developer portal (GET /api/repos/:id/merge-requests)
+    const jackListRes = await fetch(`${baseUrl}/api/repos/${jackRepoId}/merge-requests`, {
+      headers: { Authorization: `Bearer uid:${jackId}` },
+    });
+    assert.equal(jackListRes.status, 200);
+    const jackListBody: any = await jackListRes.json();
+    assert.equal(jackListBody.mergeRequests.length, 1);
+    assert.equal(jackListBody.mergeRequests[0].id, mrCreated.id);
+
+    // 6. bbob logs in and opens the Reviewer portal (GET /api/repos/:id/merge-requests as bbob)
+    const bbobListRes = await fetch(`${baseUrl}/api/repos/${jackRepoId}/merge-requests`, {
+      headers: { Authorization: `Bearer uid:${bbobId}` },
+    });
+    assert.equal(bbobListRes.status, 200);
+    const bbobListBody: any = await bbobListRes.json();
+    assert.equal(bbobListBody.mergeRequests.length, 1);
+    assert.equal(bbobListBody.mergeRequests[0].id, mrCreated.id);
+    assert.equal(bbobListBody.mergeRequests[0].title, 'Add new user feature');
+
+    // 7. bbob opens the MR details (GET /api/repos/:id/merge-requests/:mrNumber)
+    const bbobGetRes = await fetch(`${baseUrl}/api/repos/${jackRepoId}/merge-requests/1`, {
+      headers: { Authorization: `Bearer uid:${bbobId}` },
+    });
+    assert.equal(bbobGetRes.status, 200);
+    const bbobGetBody: any = await bbobGetRes.json();
+    assert.equal(bbobGetBody.mergeRequest.id, mrCreated.id);
+    assert.equal(bbobGetBody.approvals.length, 0);
+
+    // 8. Edge Case: Viewer cannot approve (returns 403)
+    const viewerApproveRes = await fetch(`${baseUrl}/api/repos/${jackRepoId}/merge-requests/1/reviews`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${viewerId}`,
+      },
+      body: JSON.stringify({ decision: 'approved', comment: 'Looks good' }),
+    });
+    assert.equal(viewerApproveRes.status, 403);
+
+    // 9. Edge Case: Author (Jack) cannot self-review (returns 403)
+    const selfReviewRes = await fetch(`${baseUrl}/api/repos/${jackRepoId}/merge-requests/1/reviews`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${jackId}`,
+      },
+      body: JSON.stringify({ decision: 'approved', comment: 'Self approving' }),
+    });
+    assert.equal(selfReviewRes.status, 403);
+
+    // 10. bbob approves the MR
+    const approveRes = await fetch(`${baseUrl}/api/repos/${jackRepoId}/merge-requests/1/reviews`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${bbobId}`,
+      },
+      body: JSON.stringify({ decision: 'approved', comment: 'Approved changes' }),
+    });
+    assert.equal(approveRes.status, 201);
+    const approveBody: any = await approveRes.json();
+    assert.equal(approveBody.approval.reviewerId, bbobId);
+    assert.equal(approveBody.approval.decision, 'approved');
+
+    // 11. Verify approval persisted and visible in MR details
+    const mrDetailsAfter = await fetch(`${baseUrl}/api/repos/${jackRepoId}/merge-requests/1`, {
+      headers: { Authorization: `Bearer uid:${jackId}` },
+    });
+    assert.equal(mrDetailsAfter.status, 200);
+    const detailsBody: any = await mrDetailsAfter.json();
+    assert.equal(detailsBody.approvals.length, 1);
+    assert.equal(detailsBody.approvals[0].reviewerId, bbobId);
+    assert.equal(detailsBody.approvals[0].decision, 'approved');
+
+    // 12. Edge Case: MR from unrelated repository must not appear for bbob
+    // Create unrelated repo owned by Alice where bbob is NOT a member
+    const unrelatedRepoRes = await fetch(`${baseUrl}/api/repos`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${ALICE_ID}`,
+      },
+      body: JSON.stringify({ name: 'alice-secret-repo', description: 'Private' }),
+    });
+    assert.equal(unrelatedRepoRes.status, 201);
+    const unrelatedRepoBody: any = await unrelatedRepoRes.json();
+    const unrelatedRepoId = unrelatedRepoBody.repository.id;
+
+    // Alice creates an MR in her repo
+    const aliceMrRes = await fetch(`${baseUrl}/api/repos/${unrelatedRepoId}/merge-requests`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${ALICE_ID}`,
+      },
+      body: JSON.stringify({
+        title: 'Alice secret MR',
+        sourceBranch: 'alice-feat',
+        targetBranch: 'main',
+      }),
+    });
+    assert.equal(aliceMrRes.status, 201);
+
+    // bbob attempts to list MRs in Alice's unrelated repository -> 404 (hidden existence)
+    const bbobUnrelatedRes = await fetch(`${baseUrl}/api/repos/${unrelatedRepoId}/merge-requests`, {
+      headers: { Authorization: `Bearer uid:${bbobId}` },
+    });
+    assert.equal(bbobUnrelatedRes.status, 404);
+  });
+
+  it('Test G: Multiple repositories with identical names are distinguished by ownerName and UUID', async () => {
+    const userJackId = crypto.randomUUID();
+    const userBbobId = crypto.randomUUID();
+
+    users.set(userJackId, {
+      id: userJackId,
+      email: 'jack_dup@versiondb.local',
+      username: 'Jack',
+      globalRole: 'developer',
+      disabled: false,
+    });
+
+    users.set(userBbobId, {
+      id: userBbobId,
+      email: 'bob_dup@versiondb.local',
+      username: 'bbob',
+      globalRole: 'reviewer',
+      disabled: false,
+    });
+
+    // 1. Jack creates a repository named 'mit'
+    const jackRepoRes = await fetch(`${baseUrl}/api/repos`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${userJackId}`,
+      },
+      body: JSON.stringify({ name: 'mit', description: 'Jack project mit' }),
+    });
+    assert.equal(jackRepoRes.status, 201);
+    const jackRepoBody: any = await jackRepoRes.json();
+    const jackRepoId = jackRepoBody.repository.id;
+
+    // 2. bbob creates a repository also named 'mit'
+    const bbobRepoRes = await fetch(`${baseUrl}/api/repos`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${userBbobId}`,
+      },
+      body: JSON.stringify({ name: 'mit', description: 'bbob personal mit' }),
+    });
+    assert.equal(bbobRepoRes.status, 201);
+    const bbobRepoBody: any = await bbobRepoRes.json();
+    const bbobRepoId = bbobRepoBody.repository.id;
+
+    // UUIDs must be distinct
+    assert.notEqual(jackRepoId, bbobRepoId);
+
+    // 3. Jack adds bbob as a reviewer to Jack's 'mit' repository
+    const inviteRes = await fetch(`${baseUrl}/api/repos/${jackRepoId}/members`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${userJackId}`,
+      },
+      body: JSON.stringify({ email: 'bob_dup@versiondb.local', role: 'reviewer' }),
+    });
+    assert.equal(inviteRes.status, 204);
+
+    // 4. Jack creates an MR in his 'mit' repository
+    const mrRes = await fetch(`${baseUrl}/api/repos/${jackRepoId}/merge-requests`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${userJackId}`,
+      },
+      body: JSON.stringify({
+        title: 'added oggy',
+        description: 'Jack Oggy PR',
+        sourceBranch: 'jack-personal-branch',
+        targetBranch: 'main',
+      }),
+    });
+    assert.equal(mrRes.status, 201);
+
+    // 5. bbob lists repositories -> must see BOTH 'mit' repositories with owner names
+    const bbobReposRes = await fetch(`${baseUrl}/api/repos`, {
+      headers: { Authorization: `Bearer uid:${userBbobId}` },
+    });
+    assert.equal(bbobReposRes.status, 200);
+    const bbobReposBody: any = await bbobReposRes.json();
+    const mitRepos = bbobReposBody.repositories.filter((r: any) => r.name === 'mit');
+    assert.equal(mitRepos.length, 2);
+
+    const jackMit = mitRepos.find((r: any) => r.id === jackRepoId);
+    const bbobMit = mitRepos.find((r: any) => r.id === bbobRepoId);
+    assert.ok(jackMit, 'Jack mit repo must be in list');
+    assert.ok(bbobMit, 'bbob mit repo must be in list');
+    assert.equal(jackMit.ownerName, 'Jack');
+    assert.equal(bbobMit.ownerName, 'bbob');
+
+    // 6. bbob queries MRs for bbob's own 'mit' repo -> returns 0 MRs
+    const bbobOwnMrRes = await fetch(`${baseUrl}/api/repos/${bbobRepoId}/merge-requests`, {
+      headers: { Authorization: `Bearer uid:${userBbobId}` },
+    });
+    assert.equal(bbobOwnMrRes.status, 200);
+    const bbobOwnMrBody: any = await bbobOwnMrRes.json();
+    assert.equal(bbobOwnMrBody.mergeRequests.length, 0);
+
+    // 7. bbob queries MRs for Jack's 'mit' repo -> returns Jack's MR 'added oggy'
+    const jackMrRes = await fetch(`${baseUrl}/api/repos/${jackRepoId}/merge-requests`, {
+      headers: { Authorization: `Bearer uid:${userBbobId}` },
+    });
+    assert.equal(jackMrRes.status, 200);
+    const jackMrBody: any = await jackMrRes.json();
+    assert.equal(jackMrBody.mergeRequests.length, 1);
+    assert.equal(jackMrBody.mergeRequests[0].title, 'added oggy');
+
+    // 8. bbob approves Jack's MR in Jack's 'mit' repo
+    const approveRes = await fetch(`${baseUrl}/api/repos/${jackRepoId}/merge-requests/1/reviews`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer uid:${userBbobId}`,
+      },
+      body: JSON.stringify({ decision: 'approved', comment: 'Approved by bbob' }),
+    });
+    assert.equal(approveRes.status, 201);
+
+    // 9. Jack checks MR details -> approval is visible
+    const mrDetailsRes = await fetch(`${baseUrl}/api/repos/${jackRepoId}/merge-requests/1`, {
+      headers: { Authorization: `Bearer uid:${userJackId}` },
+    });
+    assert.equal(mrDetailsRes.status, 200);
+    const mrDetailsBody: any = await mrDetailsRes.json();
+    assert.equal(mrDetailsBody.approvals.length, 1);
+    assert.equal(mrDetailsBody.approvals[0].reviewerId, userBbobId);
+    assert.equal(mrDetailsBody.approvals[0].decision, 'approved');
   });
 });

@@ -665,7 +665,9 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         if (!isMounted) return;
         if (check.ok && check.data) {
           let authenticatedUser = check.data;
-          if (authenticatedUser.role !== 'Admin') {
+          // Platform role is authoritative. If user has a specific platform role (Admin, Reviewer, Developer, Viewer),
+          // preserve it. Only fallback to repository membership if role is unspecified.
+          if (!authenticatedUser.role) {
             const reposRes = await versionDbServices.repositories.listRepositories(savedToken);
             if (reposRes.ok && reposRes.data && reposRes.data.length > 0) {
               const roles = reposRes.data.map((r) => r.role || 'viewer');
@@ -845,8 +847,9 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (res.ok && res.data) {
         let authenticatedUser = res.data.user;
 
-        // Verify authorized repositories/memberships to resolve accurate role for non-admins
-        if (authenticatedUser.role !== 'Admin') {
+        // Platform role is authoritative. If user has a specific platform role (Admin, Reviewer, Developer, Viewer),
+        // preserve it. Only fallback to repository membership if role is unspecified.
+        if (!authenticatedUser.role) {
           const reposRes = await versionDbServices.repositories.listRepositories(res.data.token);
           if (reposRes.ok && reposRes.data && reposRes.data.length > 0) {
             // Find highest effective role across user's authorized repositories
@@ -1150,6 +1153,8 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           setBranches(res.data.branches || []);
           setTables(res.data.tables || []);
           setCommits(res.data.commits || []);
+          setMergeRequests(res.data.mergeRequests || []);
+          setConflicts(res.data.conflicts || []);
           setUsers(res.data.members || []);
           const branchName = res.data.branches[0]?.name || 'main';
           setActiveBranch(branchName);
@@ -2150,7 +2155,13 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       initialPassword?: string;
     }): Promise<ServiceOperationResult<{ user: UserProfile; initialPassword: string }>> => {
       setIsOperationPending(true);
-      const globalRole = input.role === 'Admin' ? 'admin' : 'user';
+      const roleMap: Record<UserRole, 'admin' | 'developer' | 'reviewer' | 'viewer'> = {
+        Admin: 'admin',
+        Developer: 'developer',
+        Reviewer: 'reviewer',
+        Viewer: 'viewer',
+      };
+      const globalRole = roleMap[input.role] || 'developer';
       const res = await versionDbServices.admin.createUser({
         email: input.email,
         username: input.username,
@@ -2176,12 +2187,18 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       patch: { username?: string; role?: UserRole; disabled?: boolean }
     ): Promise<ServiceOperationResult<UserProfile>> => {
       setIsOperationPending(true);
-      const backendPatch: { username?: string; globalRole?: 'admin' | 'user'; disabled?: boolean } = {
+      const roleMap: Record<UserRole, 'admin' | 'developer' | 'reviewer' | 'viewer'> = {
+        Admin: 'admin',
+        Developer: 'developer',
+        Reviewer: 'reviewer',
+        Viewer: 'viewer',
+      };
+      const backendPatch: { username?: string; globalRole?: 'admin' | 'developer' | 'reviewer' | 'viewer' | 'user'; disabled?: boolean } = {
         username: patch.username,
         disabled: patch.disabled,
       };
       if (patch.role) {
-        backendPatch.globalRole = patch.role === 'Admin' ? 'admin' : 'user';
+        backendPatch.globalRole = roleMap[patch.role] || 'developer';
       }
 
       const res = await versionDbServices.admin.updateUser(userId, backendPatch);

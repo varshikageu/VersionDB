@@ -43,7 +43,7 @@ export interface BackendUserDto {
   id: string;
   email: string;
   username: string;
-  globalRole: 'admin' | 'user';
+  globalRole: 'admin' | 'developer' | 'reviewer' | 'viewer' | 'user';
   disabled?: boolean;
   deletedAt?: string | null;
   createdAt?: string;
@@ -61,6 +61,7 @@ export interface BackendRepoDto {
   name: string;
   description: string;
   ownerId: string;
+  ownerName?: string | null;
   defaultBranch: string;
   createdAt: string;
   role?: string;
@@ -165,14 +166,28 @@ export interface BackendMergeApprovalDto {
 // --- Mappers between backend entities and frontend UI types ---
 
 export function mapBackendUserToProfile(u: BackendUserDto): UserProfile {
-  const role: UserRole = u.globalRole === 'admin' ? 'Admin' : 'Developer';
+  let role: UserRole = 'Developer';
+  let title = 'Database Engineer';
+  if (u.globalRole === 'admin') {
+    role = 'Admin';
+    title = 'System Administrator';
+  } else if (u.globalRole === 'reviewer') {
+    role = 'Reviewer';
+    title = 'Database Reviewer';
+  } else if (u.globalRole === 'viewer') {
+    role = 'Viewer';
+    title = 'Read-Only Explorer';
+  } else {
+    role = 'Developer';
+    title = 'Database Engineer';
+  }
   return {
     id: u.id,
     name: u.username,
     handle: u.username,
     email: u.email,
     role,
-    title: u.globalRole === 'admin' ? 'System Administrator' : 'Database Engineer',
+    title,
     avatarUrl: '',
     disabled: u.disabled,
     deletedAt: u.deletedAt ?? null,
@@ -242,6 +257,8 @@ export function mapBackendRepoToRepository(r: BackendRepoDto): Repository {
     latestSnapshotRef: 'HEAD',
     replicaBufferHealthPct: 100,
     role: r.role,
+    ownerId: r.ownerId,
+    ownerName: r.ownerName ?? undefined,
   };
 }
 
@@ -600,7 +617,7 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
       async createUser(input: {
         email: string;
         username: string;
-        globalRole: 'admin' | 'user';
+        globalRole: 'admin' | 'developer' | 'reviewer' | 'viewer' | 'user';
         initialPassword?: string;
       }): Promise<ServiceOperationResult<{ user: UserProfile; initialPassword: string }>> {
         const res = await client.request<{ user: BackendUserDto; initialPassword: string }>('/api/admin/users', {
@@ -627,7 +644,7 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
 
       async updateUser(
         userId: string,
-        patch: { username?: string; globalRole?: 'admin' | 'user'; disabled?: boolean }
+        patch: { username?: string; globalRole?: 'admin' | 'developer' | 'reviewer' | 'viewer' | 'user'; disabled?: boolean }
       ): Promise<ServiceOperationResult<UserProfile>> {
         const res = await client.request<{ user: BackendUserDto }>(`/api/admin/users/${userId}`, {
           method: 'PATCH',

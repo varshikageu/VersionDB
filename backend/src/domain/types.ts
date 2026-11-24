@@ -4,7 +4,7 @@ export type { JsonValue };
 /** collection -> recordId -> record. Empty collections never exist. */
 export type SnapshotData = Record<string, Record<string, JsonValue>>;
 
-export type GlobalRole = 'user' | 'admin';
+export type GlobalRole = 'admin' | 'developer' | 'reviewer' | 'viewer' | 'user';
 export type RepoRole = 'viewer' | 'reviewer' | 'maintainer' | 'owner';
 export type CommitKind = 'initial' | 'normal' | 'merge' | 'revert';
 
@@ -19,7 +19,7 @@ export interface PublicUser {
   disabled?: boolean; deletedAt?: Date | string | null; createdAt?: Date | string;
 }
 
-export interface Repository { id: string; name: string; description: string; ownerId: string; defaultBranch: string; createdAt: Date }
+export interface Repository { id: string; name: string; description: string; ownerId: string; ownerName?: string | null; defaultBranch: string; createdAt: Date }
 export interface RepositoryWithRole extends Repository { role: RepoRole }
 export interface Member { repoId: string; userId: string; username: string; email: string; role: RepoRole; createdAt: Date }
 

@@ -11,7 +11,7 @@ export const mapUser = (r: Row): User => ({
   globalRole: r.global_role, disabled: r.disabled, deletedAt: r.deleted_at ?? null, createdAt: r.created_at,
 });
 export const mapRepository = (r: Row): Repository => ({
-  id: r.id, name: r.name, description: r.description, ownerId: r.owner_id, defaultBranch: r.default_branch, createdAt: r.created_at,
+  id: r.id, name: r.name, description: r.description, ownerId: r.owner_id, ownerName: r.owner_name ?? null, defaultBranch: r.default_branch, createdAt: r.created_at,
 });
 export const mapRepositoryWithRole = (r: Row): RepositoryWithRole => ({ ...mapRepository(r), role: r.role });
 export const mapMember = (r: Row): Member => ({

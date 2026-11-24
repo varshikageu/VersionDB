@@ -279,7 +279,9 @@ export class AuthService {
     try {
       const p = jwt.verify(token, this.env.JWT_ACCESS_SECRET, { algorithms: ['HS256'], issuer: this.env.JWT_ISSUER }) as jwt.JwtPayload;
       if (!p.sub) throw new Error('no subject');
-      return { userId: p.sub, globalRole: p.role === 'admin' ? 'admin' : 'user' };
+      const validRoles: GlobalRole[] = ['admin', 'developer', 'reviewer', 'viewer', 'user'];
+      const role: GlobalRole = validRoles.includes(p.role) ? p.role : 'developer';
+      return { userId: p.sub, globalRole: role };
     } catch {
       throw unauthorized('INVALID_TOKEN', 'Invalid or expired access token');
     }
