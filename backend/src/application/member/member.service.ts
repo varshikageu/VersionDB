@@ -9,7 +9,7 @@ export class MemberService {
 
   /**
    * Single authorization gate for every repository-scoped use case.
-   * Users with no access get 404 (the repository's existence is not revealed); users with too little access get 403.
+   * Users with no access get 404 (the repository's existence is not revealed); users having very little access are bound to get 403 error
    */
   async authorize(actor: Actor, repoId: string, capability: Capability): Promise<{ repo: Repository; role: RepoRole }> {
     const repo = await this.uow.repos.repositories.findById(repoId);
