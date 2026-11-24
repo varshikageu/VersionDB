@@ -114,7 +114,9 @@ export const TopHeader: React.FC = () => {
           >
             <span className="material-symbols-outlined text-[14px] text-[#2563eb] flex-shrink-0">dns</span>
             <span className="font-mono truncate">
-              {activeRepo ? activeRepo.name : 'No Repository'}
+              {activeRepo
+                ? `${activeRepo.name}${activeRepo.ownerName ? ` (by ${activeRepo.ownerName})` : ''}`
+                : 'No Repository'}
             </span>
             {activeRepo && (
               <span className="badge badge-gray text-[10px] px-1.5 py-0 hidden md:inline-flex">
@@ -156,7 +158,12 @@ export const TopHeader: React.FC = () => {
                     >
                       <div>
                         <div className="text-[12px] font-semibold text-[#10172a] font-mono flex items-center gap-1.5">
-                          {repo.name}
+                          <span>{repo.name}</span>
+                          {repo.ownerName && (
+                            <span className="text-[11px] font-normal text-[#5263a0] font-sans">
+                              (by {repo.ownerName})
+                            </span>
+                          )}
                           {activeRepo?.id === repo.id && (
                             <span className="material-symbols-outlined text-[13px] text-[#2563eb]">check</span>
                           )}

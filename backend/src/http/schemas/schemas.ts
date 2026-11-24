@@ -16,12 +16,12 @@ export const refreshBody = z.object({ refreshToken: z.string().min(20).max(200) 
 export const adminCreateUserBody = z.object({
   email,
   username: z.string().trim().regex(USERNAME_RE, 'Use 3-32 letters, digits, "_", "." or "-"'),
-  globalRole: z.enum(['user', 'admin']).default('user'),
+  globalRole: z.enum(['admin', 'developer', 'reviewer', 'viewer', 'user']).default('developer'),
   initialPassword: z.string().min(10).optional(),
 });
 export const adminUpdateUserBody = z.object({
   username: z.string().trim().regex(USERNAME_RE, 'Use 3-32 letters, digits, "_", "." or "-"').optional(),
-  globalRole: z.enum(['user', 'admin']).optional(),
+  globalRole: z.enum(['admin', 'developer', 'reviewer', 'viewer', 'user']).optional(),
   disabled: z.boolean().optional(),
 });
 export const userParams = z.object({ userId: z.string().uuid() });

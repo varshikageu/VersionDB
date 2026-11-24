@@ -5,7 +5,7 @@ import type { Queryable } from './pool';
 export class PgUserRepo implements UserRepo {
   constructor(private db: Queryable) {}
   async create(u: { email: string; username: string; passwordHash: string; globalRole?: import('../../domain/types').GlobalRole }) {
-    const role = u.globalRole ?? 'user';
+    const role = u.globalRole ?? 'developer';
     const r = await this.db.query(
       'INSERT INTO users (email, username, password_hash, global_role) VALUES ($1, $2, $3, $4) RETURNING *',
       [u.email, u.username, u.passwordHash, role]
@@ -102,14 +102,30 @@ export class PgRepositoryRepo implements RepositoryRepo {
     return mapRepository(res.rows[0]);
   }
   async findById(id: string) {
-    const r = await this.db.query('SELECT * FROM repositories WHERE id = $1', [id]);
+    const r = await this.db.query(
+      `SELECT r.*, u.username AS owner_name 
+       FROM repositories r 
+       LEFT JOIN users u ON u.id = r.owner_id 
+       WHERE r.id = $1`,
+      [id],
+    );
     return r.rows[0] ? mapRepository(r.rows[0]) : null;
   }
   async listForUser(userId: string, all: boolean) {
     const r = all
-      ? await this.db.query("SELECT r.*, 'owner'::text AS role FROM repositories r ORDER BY r.created_at DESC")
+      ? await this.db.query(
+          `SELECT r.*, u.username AS owner_name, 'owner'::text AS role 
+           FROM repositories r 
+           LEFT JOIN users u ON u.id = r.owner_id 
+           ORDER BY r.created_at DESC`,
+        )
       : await this.db.query(
-          'SELECT r.*, m.role FROM repositories r JOIN repository_members m ON m.repo_id = r.id WHERE m.user_id = $1 ORDER BY r.created_at DESC',
+          `SELECT r.*, u.username AS owner_name, m.role 
+           FROM repositories r 
+           JOIN repository_members m ON m.repo_id = r.id 
+           LEFT JOIN users u ON u.id = r.owner_id 
+           WHERE m.user_id = $1 
+           ORDER BY r.created_at DESC`,
           [userId],
         );
     return r.rows.map(mapRepositoryWithRole);
