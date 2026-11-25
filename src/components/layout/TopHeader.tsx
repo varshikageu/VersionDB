@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { VersionDbLogo } from '../common/VersionDbLogo';
 import { useVersionDb } from '../../context/VersionDbContext';
-import { UserRole } from '../../types/versiondb';
 
 export const TopHeader: React.FC = () => {
   const {
@@ -12,7 +11,6 @@ export const TopHeader: React.FC = () => {
     branches,
     selectBranch,
     currentUser,
-    switchUserOrRole,
     authState,
     signOutSession,
     backendConnectionState,
@@ -74,8 +72,6 @@ export const TopHeader: React.FC = () => {
     }
     return { label: 'Unavailable', dotClass: 'status-dot-red', pillClass: 'bg-red-50 text-red-700 border-red-100' };
   })();
-
-  const availableRoles: UserRole[] = ['Admin', 'Reviewer', 'Developer', 'Viewer'];
 
   const closeAllMenus = () => {
     setRepoMenuOpen(false);
@@ -415,66 +411,55 @@ export const TopHeader: React.FC = () => {
           </button>
 
           {roleMenuOpen && (
-            <div className="absolute right-0 top-full mt-1.5 w-80 vdb-dropdown z-50">
-              <div className="px-3 py-2.5 border-b border-[#f1f3fb]">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#8890b8] mb-0.5">
-                  UI Role Preview
-                </div>
-                <p className="text-[11px] text-[#5263a0]">
-                  Previews role-conditioned UI only. Does not grant backend permissions.
-                </p>
-              </div>
-              <div className="divide-y divide-[#f1f3fb]">
-                {availableRoles.map((role) => (
-                  <button
-                    key={role}
-                    type="button"
-                    onClick={() => { switchUserOrRole(role); closeAllMenus(); }}
-                    className={`w-full px-3 py-2 text-left flex items-center justify-between hover:bg-[#f5f6ff] transition-colors ${currentUser.role === role ? 'bg-[#eff4ff]' : ''}`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="material-symbols-outlined text-[15px] text-[#8890b8]">badge</span>
-                      <span className="text-[12px] font-semibold text-[#10172a]">{role} Layout</span>
+            <div className="absolute right-0 top-full mt-1.5 w-64 vdb-dropdown z-50 p-3 space-y-3">
+              <div className="flex items-center gap-3 pb-3 border-b border-[#f1f3fb]">
+                {currentUser.avatarUrl ? (
+                  <img src={currentUser.avatarUrl} alt={currentUser.name} className="w-10 h-10 rounded-full object-cover" />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-[#e8ebf8] flex items-center justify-center text-[#5263a0]">
+                    <span className="material-symbols-outlined text-[20px]">person</span>
+                  </div>
+                )}
+                <div className="overflow-hidden">
+                  <div className="text-[13px] font-semibold text-[#10172a] truncate">
+                    {authState.isAuthenticated ? currentUser.name : 'Unauthenticated'}
+                  </div>
+                  {currentUser.email && (
+                    <div className="text-[11px] font-mono text-[#8890b8] truncate">
+                      {currentUser.email}
                     </div>
-                    <span className={`badge text-[10px] ${
-                      role === 'Admin' ? 'badge-blue'
-                      : role === 'Reviewer' ? 'badge-green'
-                      : role === 'Developer' ? 'badge-yellow'
-                      : 'badge-gray'
-                    }`}>{role}</span>
-                  </button>
-                ))}
-              </div>
-              <div className="px-3 py-2.5 border-t border-[#f1f3fb] bg-[#f5f6ff] space-y-1.5">
-                <div className="flex items-center justify-between text-[11px] font-mono">
-                  <span className="text-[#5263a0]">Backend Session</span>
-                  <span className={authState.isAuthenticated ? 'text-emerald-600 font-semibold' : 'text-amber-600 font-semibold'}>
-                    {authState.isAuthenticated ? 'Active' : 'Not Authenticated'}
+                  )}
+                  <span className={`inline-block mt-1 badge text-[10px] ${
+                    currentUser.role === 'Admin' ? 'badge-blue'
+                    : currentUser.role === 'Reviewer' ? 'badge-green'
+                    : currentUser.role === 'Developer' ? 'badge-yellow'
+                    : 'badge-gray'
+                  }`}>
+                    {currentUser.role}
                   </span>
                 </div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <button type="button"
-                    onClick={() => { closeAllMenus(); navigateTo('profile'); }}
-                    className="btn-secondary py-1.5 text-[12px] justify-center">
-                    <span className="material-symbols-outlined text-[13px]">manage_accounts</span>
-                    Account
+              </div>
+
+              <div>
+                {authState.isAuthenticated ? (
+                  <button
+                    type="button"
+                    onClick={() => { closeAllMenus(); void signOutSession(); }}
+                    className="btn-danger w-full py-1.5 text-[12px] justify-center"
+                  >
+                    <span className="material-symbols-outlined text-[15px]">logout</span>
+                    Sign Out
                   </button>
-                  {authState.isAuthenticated ? (
-                    <button type="button"
-                      onClick={() => { closeAllMenus(); void signOutSession(); }}
-                      className="btn-danger py-1.5 text-[12px] justify-center">
-                      <span className="material-symbols-outlined text-[13px]">logout</span>
-                      Sign Out
-                    </button>
-                  ) : (
-                    <button type="button"
-                      onClick={() => { closeAllMenus(); navigateTo('login'); }}
-                      className="btn-primary py-1.5 text-[12px] justify-center">
-                      <span className="material-symbols-outlined text-[13px]">login</span>
-                      Sign In
-                    </button>
-                  )}
-                </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => { closeAllMenus(); navigateTo('login'); }}
+                    className="btn-primary w-full py-1.5 text-[12px] justify-center"
+                  >
+                    <span className="material-symbols-outlined text-[15px]">login</span>
+                    Sign In
+                  </button>
+                )}
               </div>
             </div>
           )}

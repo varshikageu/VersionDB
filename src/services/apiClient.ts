@@ -1,12 +1,11 @@
 import { getEnvironmentConfig } from '../config/appConfig';
-import { ServiceOperationResult, UserRole } from '../types/versiondb';
+import { ServiceOperationResult } from '../types/versiondb';
 
 export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
   body?: unknown;
   timeoutMs?: number;
   signal?: AbortSignal;
   sessionToken?: string | null;
-  uiRoleHint?: UserRole;
   headers?: Record<string, string>;
   silent?: boolean;
   skipRefresh?: boolean;

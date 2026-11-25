@@ -428,4 +428,201 @@ describe('MergeRequestService Full Lifecycle', () => {
     assert.equal(mr.targetHeadCommitId, 'c-main');
     assert.equal(mr.hasConflicts, false);
   });
+
+  it('deduplicates parent commit IDs when source and target share the same head commit ID', async () => {
+    const headCommitId = 'c-shared-head';
+    let insertedParents: string[] = [];
+
+    const mockUow: any = {
+      repos: {
+        branches: {
+          find: async () => ({
+            id: 'b-main',
+            repoId,
+            name: 'main',
+            headCommitId,
+            protection: null,
+          }),
+          lock: async () => ({
+            id: 'b-main',
+            repoId,
+            name: 'main',
+            headCommitId,
+            protection: null,
+          }),
+          compareAndSetHead: async () => true,
+        },
+        commits: {
+          find: async () => ({ id: headCommitId }),
+          registerSnapshot: async () => {},
+          insert: async (data: any) => {
+            insertedParents = data.parents;
+            return { id: 'c-merge-commit', ...data };
+          },
+        },
+        mergeRequests: {
+          findByNumber: async () => ({
+            id: 'mr-same-head',
+            repoId,
+            number: 1,
+            title: 'Same head merge',
+            sourceBranchName: 'feat',
+            targetBranchName: 'main',
+            sourceHeadCommitId: headCommitId,
+            targetHeadCommitId: headCommitId,
+            baseCommitId: headCommitId,
+            status: 'open',
+            resolutionRev: 0,
+          }),
+          findById: async () => ({
+            id: 'mr-same-head',
+            repoId,
+            number: 1,
+            title: 'Same head merge',
+            sourceBranchName: 'feat',
+            targetBranchName: 'main',
+            sourceHeadCommitId: headCommitId,
+            targetHeadCommitId: headCommitId,
+            baseCommitId: headCommitId,
+            status: 'merged',
+            resolutionRev: 0,
+          }),
+          setMerged: async () => {},
+        },
+        merges: {
+          insert: async (data: any) => ({ id: 'm-record-1', ...data }),
+        },
+        conflicts: {
+          listByMr: async () => [],
+          countUnresolved: async () => 0,
+        },
+        mergeApprovals: {
+          countValid: async () => 1,
+        },
+      },
+      transaction: async (fn: any) => fn(mockUow.repos),
+    };
+
+    const mockStorage: any = {
+      putSnapshot: async () => ({ hash: 'h-snap', recordCount: 1, sizeBytes: 100 }),
+      updateRef: async () => {},
+    };
+    const mockSnapshots: any = {
+      forCommit: async () => ({}),
+      invalidateBranch: async () => {},
+    };
+    const mockMembers: any = {
+      authorize: async () => ({ role: 'owner' }),
+    };
+    const mockAudit: any = { log: async () => {} };
+
+    const service = new MergeRequestService(mockUow, mockStorage, mockMembers, mockSnapshots, mockAudit);
+    const result = await service.merge(actorMaintainer, repoId, 1);
+
+    assert.equal(result.mergeRequest.status, 'merged');
+    assert.deepEqual(insertedParents, [headCommitId], 'Parents must be deduplicated to a single parent to prevent unique constraint violation');
+  });
+
+  it('persists two successive merges into target branch history and leaves failed merges out of history', async () => {
+    const repoId = '00000000-0000-0000-0000-000000000099';
+    let targetHead = 'c-init';
+    const commitHistory: Array<{ id: string; parents: string[]; kind: string; snapshotHash: string }> = [
+      { id: 'c-init', parents: [], kind: 'normal', snapshotHash: '4083ab8b' },
+    ];
+    const mrs: Record<number, any> = {
+      1: {
+        id: 'mr-1',
+        number: 1,
+        repoId,
+        title: 'MR #1',
+        sourceBranchName: 'jack_personal_branch',
+        targetBranchName: 'main',
+        baseCommitId: 'c-init',
+        sourceHeadCommitId: 'c-init',
+        targetHeadCommitId: 'c-init',
+        status: 'open',
+        resolutionRev: 0,
+      },
+      2: {
+        id: 'mr-2',
+        number: 2,
+        repoId,
+        title: 'MR #2',
+        sourceBranchName: 'jack_personal_branch',
+        targetBranchName: 'main',
+        baseCommitId: 'c-init',
+        sourceHeadCommitId: 'c-init',
+        targetHeadCommitId: 'c-merge-1',
+        status: 'open',
+        resolutionRev: 0,
+      },
+    };
+    let mergeSeq = 0;
+
+    const mockUow: any = {
+      repos: {
+        mergeRequests: {
+          findById: async (id: string) => Object.values(mrs).find((m) => m.id === id) ?? null,
+          findByNumber: async (_r: string, num: number) => mrs[num] ?? null,
+          setMerged: async (id: string) => {
+            const found = Object.values(mrs).find((m) => m.id === id);
+            if (found) found.status = 'merged';
+          },
+        },
+        branches: {
+          find: async (_r: string, name: string) =>
+            name === 'main' ? { id: 'b-main', name: 'main', headCommitId: targetHead, protection: null } : null,
+          lock: async (_r: string, name: string) =>
+            name === 'main' ? { id: 'b-main', name: 'main', headCommitId: targetHead, protection: null } : null,
+          compareAndSetHead: async (_bId: string, expected: string, next: string) => {
+            if (targetHead !== expected) return false;
+            targetHead = next;
+            return true;
+          },
+        },
+        commits: {
+          registerSnapshot: async () => {},
+          insert: async (c: any) => {
+            mergeSeq += 1;
+            const id = `c-merge-${mergeSeq}`;
+            commitHistory.push({ id, parents: c.parents, kind: c.kind, snapshotHash: c.snapshotHash });
+            return { id, ...c };
+          },
+        },
+        merges: { insert: async () => ({ id: `merge-rec-${mergeSeq}` }) },
+        conflicts: { listByMr: async () => [], countUnresolved: async () => 0 },
+        mergeApprovals: { countValid: async () => 1 },
+      },
+      transaction: async (fn: any) => fn(mockUow.repos),
+    };
+
+    const mockStorage: any = {
+      putSnapshot: async () => ({ hash: `snap-${mergeSeq + 1}`, recordCount: 1, sizeBytes: 100 }),
+      updateRef: async () => {},
+    };
+    const mockSnapshots: any = {
+      forCommit: async () => ({}),
+      invalidateBranch: async () => {},
+    };
+    const mockMembers: any = { authorize: async () => ({ role: 'owner' }) };
+    const mockAudit: any = { log: async () => {} };
+
+    const service = new MergeRequestService(mockUow, mockStorage, mockMembers, mockSnapshots, mockAudit);
+
+    // 1. First merge succeeds
+    const res1 = await service.merge(actorMaintainer, repoId, 1);
+    assert.equal(res1.mergeRequest.status, 'merged');
+    assert.equal(targetHead, 'c-merge-1');
+
+    // 2. Second merge succeeds
+    const res2 = await service.merge(actorMaintainer, repoId, 2);
+    assert.equal(res2.mergeRequest.status, 'merged');
+    assert.equal(targetHead, 'c-merge-2');
+    assert.equal(commitHistory.length, 3);
+    assert.deepEqual(commitHistory[2].parents, ['c-merge-1', 'c-init']);
+
+    // 3. Failed merge (already merged) does not create a history entry
+    await assert.rejects(() => service.merge(actorMaintainer, repoId, 2));
+    assert.equal(commitHistory.length, 3);
+  });
 });

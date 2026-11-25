@@ -61,11 +61,11 @@ export const AccessDenied403Screen: React.FC = () => {
           </span>
         </div>
         <div className="flex justify-between">
-          <span>Active UI Role Hint:</span>
+          <span>Assigned Role:</span>
           <span className="text-[#2563eb] font-semibold">{currentUser.role}</span>
         </div>
         <p className="text-[11px] text-[#8890b8] pt-1">
-          Note: Client-side UI role hints never grant real backend permissions. Authoritative access control is enforced by the VersionDB server.
+          Note: Authoritative access control and permissions are strictly enforced by the VersionDB server.
         </p>
       </div>
       <div className="flex flex-wrap items-center justify-center gap-2.5">

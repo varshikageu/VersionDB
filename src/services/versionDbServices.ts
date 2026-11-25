@@ -774,16 +774,28 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
           }
 
           const targetBranch = branches[0]?.name || primaryRepo.defaultBranch || 'main';
+          const defaultBranchName = primaryRepo.defaultBranch || 'main';
+          const branchNamesToFetch =
+            branches.length > 0
+              ? [
+                  ...branches.filter((b) => b.name === defaultBranchName).map((b) => b.name),
+                  ...branches.filter((b) => b.name !== defaultBranchName).map((b) => b.name),
+                ]
+              : [targetBranch];
 
-          // Fetch collections & commits for target branch
-          const [recordsRes, historyRes] = await Promise.all([
+          // Fetch collections for target branch & commit history across all branches
+          const [recordsRes, ...historyResults] = await Promise.all([
             client.request<{ commitId: string | null; collections?: Array<{ name: string; count: number }> }>(
               `/api/repos/${primaryRepo.id}/branches/${targetBranch}/records`,
               { method: 'GET', sessionToken, signal }
             ),
-            client.request<{ commits: BackendCommitDto[] }>(
-              `/api/repos/${primaryRepo.id}/history/${targetBranch}`,
-              { method: 'GET', sessionToken, signal }
+            ...branchNamesToFetch.map((branchName) =>
+              client
+                .request<{ commits: BackendCommitDto[] }>(
+                  `/api/repos/${primaryRepo.id}/history/${branchName}`,
+                  { method: 'GET', sessionToken, signal }
+                )
+                .then((res) => ({ branchName, res }))
             ),
           ]);
 
@@ -803,9 +815,20 @@ export function createVersionDbServices(client: VersionDbApiClient = apiClient) 
             }));
           }
 
-          if (historyRes.ok && historyRes.data?.commits) {
-            commits = historyRes.data.commits.map((c) => mapBackendCommitToRecord(c, targetBranch));
+          const seenCommitIds = new Set<string>();
+          const aggregatedCommits: CommitRecord[] = [];
+          for (const { branchName, res } of historyResults) {
+            if (res.ok && res.data?.commits) {
+              for (const dto of res.data.commits) {
+                if (!seenCommitIds.has(dto.id)) {
+                  seenCommitIds.add(dto.id);
+                  aggregatedCommits.push(mapBackendCommitToRecord(dto, branchName));
+                }
+              }
+            }
           }
+          aggregatedCommits.sort((a, b) => Date.parse(b.timestampIso) - Date.parse(a.timestampIso));
+          commits = aggregatedCommits;
 
           // Fetch merge requests for primary repo
           const mrRes = await client.request<{ mergeRequests: BackendMergeRequestDto[] }>(
