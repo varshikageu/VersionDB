@@ -439,9 +439,7 @@ export const ProfileAccountScreen: React.FC = () => {
                 Not Authenticated
               </div>
               <p className="text-[12px] text-[#5263a0] leading-relaxed">
-                No active backend user session is present. The active UI Role Hint (
-                <code className="font-mono text-[#2563eb]">{currentUser.role}</code>) only previews
-                role-specific interface layouts and does not represent a logged-in account.
+                No active backend user session is present. Please sign in to access your repositories and workspaces.
               </p>
             </div>
           ) : (

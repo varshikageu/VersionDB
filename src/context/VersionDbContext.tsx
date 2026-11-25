@@ -66,13 +66,11 @@ interface VersionDbContextValue {
   refreshWorkspaceCatalog: () => Promise<ServiceOperationResult>;
   checkBackendHealth: () => Promise<void>;
 
-  // Auth & UI Role Presentation Helper
+  // Auth & Session
   authState: AuthState;
-  uiRoleHint: UserRole;
   currentUser: UserProfile;
   users: UserProfile[];
   roleCapabilities: (typeof ROLE_UI_CAPABILITIES)[UserRole];
-  switchUserOrRole: (roleOrId: string) => void;
   signInWithBackend: (
     email: string,
     password: string,
@@ -354,9 +352,6 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       authError: null,
     };
   });
-
-  // Presentation-only UI role hint for inspecting role-conditioned layouts
-  const [uiRoleHint, setUiRoleHint] = useState<UserRole>('Developer');
 
   // Ref to always hold the latest isAuthenticated value — used in navigateTo to avoid stale closures
   const isAuthenticatedRef = useRef<boolean>(false);
@@ -779,7 +774,6 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Derived activeUser: either real backend user or clearly marked unauthenticated UI role preview
   const currentUser = useMemo<UserProfile>(() => {
     if (authState.isAuthenticated && authState.user) {
       return authState.user;
@@ -789,16 +783,11 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       name: 'Unauthenticated Session',
       handle: 'unauthenticated',
       email: '',
-      role: uiRoleHint,
-      title: `UI Role Preview (${uiRoleHint})`,
+      role: 'Viewer',
+      title: 'Unauthenticated Session',
       avatarUrl: '',
     };
-  }, [authState.isAuthenticated, authState.user, uiRoleHint]);
-
-  const roleCapabilities = useMemo(
-    () => ROLE_UI_CAPABILITIES[currentUser.role],
-    [currentUser.role]
-  );
+  }, [authState.isAuthenticated, authState.user]);
 
   const activeRepo = useMemo<Repository | null>(() => {
     if (repositories.length === 0) {
@@ -807,30 +796,35 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return repositories.find((r) => r.id === activeRepoId) || repositories[0];
   }, [repositories, activeRepoId]);
 
+  const roleCapabilities = useMemo(() => {
+    // Determine effective repository role:
+    // If activeRepo specifies a role (e.g. 'owner', 'maintainer', 'reviewer', 'viewer'), map it to UserRole:
+    // - owner -> Admin (can execute merges, manage members, etc.)
+    // - maintainer -> Admin/Maintainer capabilities (can execute merges)
+    // - reviewer -> Reviewer (can approve MRs, cannot execute merge)
+    // - viewer -> Viewer (read-only)
+    // Platform global admin always retains Admin capabilities across all repositories.
+    let effectiveUiRole: UserRole = currentUser.role;
+
+    if (currentUser.role === 'Admin') {
+      effectiveUiRole = 'Admin';
+    } else if (activeRepo?.role) {
+      const repoRole = activeRepo.role.toLowerCase();
+      if (repoRole === 'owner' || repoRole === 'maintainer') {
+        effectiveUiRole = 'Admin';
+      } else if (repoRole === 'reviewer') {
+        effectiveUiRole = 'Reviewer';
+      } else {
+        effectiveUiRole = 'Viewer';
+      }
+    }
+
+    return ROLE_UI_CAPABILITIES[effectiveUiRole] || ROLE_UI_CAPABILITIES.Viewer;
+  }, [currentUser.role, activeRepo?.role]);
+
   const unreadNotificationsCount = useMemo(
     () => notifications.filter((n) => !n.read).length,
     [notifications]
-  );
-
-  const switchUserOrRole = useCallback(
-    (roleOrId: string) => {
-      const validRoles: UserRole[] = ['Admin', 'Reviewer', 'Developer', 'Viewer'];
-      const matchedRole = validRoles.find((r) => r.toLowerCase() === roleOrId.toLowerCase());
-      if (matchedRole) {
-        setUiRoleHint(matchedRole);
-        pushToast(
-          'info',
-          `UI Role Hint: ${matchedRole}`,
-          'Client-side UI layout updated. Server-side RBAC remains authoritative for all operations.'
-        );
-        return;
-      }
-      const matchedMember = users.find((u) => u.id === roleOrId);
-      if (matchedMember) {
-        setUiRoleHint(matchedMember.role);
-      }
-    },
-    [pushToast, users]
   );
 
   // Auth operations
@@ -2272,11 +2266,9 @@ export const VersionDbProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     checkBackendHealth,
 
     authState,
-    uiRoleHint,
     currentUser,
     users,
     roleCapabilities,
-    switchUserOrRole,
     signInWithBackend,
     registerWithBackend,
     signOutSession,

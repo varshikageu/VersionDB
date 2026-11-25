@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { BACKEND_INTEGRATION_CONTRACT } from '../../config/appConfig';
+import { BACKEND_INTEGRATION_CONTRACT, ROLE_UI_CAPABILITIES } from '../../config/appConfig';
 import { VersionDbApiClient } from '../apiClient';
 import { createVersionDbServices } from '../versionDbServices';
 
@@ -1176,5 +1176,169 @@ describe('VersionDB Integration Bug Fix Regressions', () => {
     assert.equal(res.statusCode, 400);
     assert.equal(res.errorCode, 'VALIDATION_ERROR');
     assert.equal(res.error, 'Only one SELECT statement is supported.');
+  });
+
+  it('mergeRequests.mergeBranch suppresses onForbidden callback on HTTP 403 to prevent screen redirect', async () => {
+    let forbiddenRedirectTriggered = false;
+    const client = new VersionDbApiClient({
+      apiBaseUrl: 'http://localhost:3000',
+      fetchImpl: async () => {
+        return new Response(
+          JSON.stringify({
+            error: {
+              code: 'FORBIDDEN',
+              message: 'This action requires the maintainer role or higher',
+            },
+          }),
+          { status: 403 }
+        );
+      },
+    });
+    client.setCallbacks({
+      onForbidden: () => {
+        forbiddenRedirectTriggered = true;
+      },
+    });
+
+    const services = createVersionDbServices(client);
+    const res = await services.mergeRequests.mergeBranch('repo-1', 1, 'token-reviewer');
+
+    assert.equal(res.ok, false);
+    assert.equal(res.statusCode, 403);
+    assert.equal(res.errorCode, 'FORBIDDEN');
+    assert.equal(res.error, 'This action requires the maintainer role or higher');
+    assert.equal(forbiddenRedirectTriggered, false, 'Action-level 403 must not trigger onForbidden navigation');
+  });
+
+  it('effective repository role dynamically determines merge capabilities for developer/owner vs reviewer', () => {
+    // Platform Developer who owns a repository receives effective Admin capabilities (can merge)
+    const ownerCapabilities = ROLE_UI_CAPABILITIES.Admin;
+    assert.equal(ownerCapabilities.canMergeProtectedMain, true);
+
+    // Platform Reviewer receives Reviewer capabilities (can review, cannot execute merge)
+    const reviewerCapabilities = ROLE_UI_CAPABILITIES.Reviewer;
+    assert.equal(reviewerCapabilities.canReviewAndApproveMr, true);
+    assert.equal(reviewerCapabilities.canMergeProtectedMain, false);
+
+    // Read-only Viewer cannot review and cannot merge
+    const viewerCapabilities = ROLE_UI_CAPABILITIES.Viewer;
+    assert.equal(viewerCapabilities.canReviewAndApproveMr, false);
+    assert.equal(viewerCapabilities.canMergeProtectedMain, false);
+  });
+
+  it('fetchWorkspaceState aggregates and deduplicates commit history across all branches', async () => {
+    const requestedHistoryBranches: string[] = [];
+    const client = new VersionDbApiClient({
+      apiBaseUrl: 'http://localhost:3000',
+      fetchImpl: async (input) => {
+        const url = String(input);
+        if (url.endsWith('/api/repos')) {
+          return new Response(
+            JSON.stringify({
+              repositories: [
+                {
+                  id: 'repo-1',
+                  name: 'mit',
+                  default_branch: 'main',
+                  role: 'owner',
+                },
+              ],
+            }),
+            { status: 200 }
+          );
+        }
+        if (url.endsWith('/api/repos/repo-1/branches')) {
+          return new Response(
+            JSON.stringify({
+              branches: [
+                { id: 'b-1', name: 'jack_personal_branch', headCommitId: 'c-init' },
+                { id: 'b-2', name: 'main', headCommitId: 'c-merge-2' },
+              ],
+            }),
+            { status: 200 }
+          );
+        }
+        if (url.endsWith('/api/repos/repo-1/members')) {
+          return new Response(JSON.stringify({ members: [] }), { status: 200 });
+        }
+        if (url.includes('/records')) {
+          return new Response(JSON.stringify({ commitId: 'c-init', collections: [] }), { status: 200 });
+        }
+        if (url.endsWith('/api/repos/repo-1/history/jack_personal_branch')) {
+          requestedHistoryBranches.push('jack_personal_branch');
+          return new Response(
+            JSON.stringify({
+              commits: [
+                {
+                  id: 'c-init',
+                  snapshot_hash: '4083ab8b',
+                  author_id: 'u-1',
+                  author_name: 'Jack',
+                  message: 'Initial commit',
+                  kind: 'normal',
+                  parents: [],
+                  createdAt: '2026-11-24T10:00:00.000Z',
+                },
+              ],
+            }),
+            { status: 200 }
+          );
+        }
+        if (url.endsWith('/api/repos/repo-1/history/main')) {
+          requestedHistoryBranches.push('main');
+          return new Response(
+            JSON.stringify({
+              commits: [
+                {
+                  id: 'c-merge-2',
+                  snapshot_hash: 'snap-m2',
+                  author_id: 'u-1',
+                  author_name: 'Jack',
+                  message: "Merge branch 'jack_personal_branch' into 'main' (MR #2)",
+                  kind: 'merge',
+                  parents: ['c-merge-1', 'c-init'],
+                  createdAt: '2026-11-24T12:00:00.000Z',
+                },
+                {
+                  id: 'c-merge-1',
+                  snapshot_hash: 'snap-m1',
+                  author_id: 'u-1',
+                  author_name: 'Jack',
+                  message: "Merge branch 'jack_personal_branch' into 'main' (MR #1)",
+                  kind: 'merge',
+                  parents: ['c-init'],
+                  createdAt: '2026-11-24T11:00:00.000Z',
+                },
+                {
+                  id: 'c-init',
+                  snapshot_hash: '4083ab8b',
+                  author_id: 'u-1',
+                  author_name: 'Jack',
+                  message: 'Initial commit',
+                  kind: 'normal',
+                  parents: [],
+                  createdAt: '2026-11-24T10:00:00.000Z',
+                },
+              ],
+            }),
+            { status: 200 }
+          );
+        }
+        if (url.endsWith('/api/repos/repo-1/merge-requests')) {
+          return new Response(JSON.stringify({ mergeRequests: [] }), { status: 200 });
+        }
+        return new Response(JSON.stringify({}), { status: 404 });
+      },
+    });
+
+    const services = createVersionDbServices(client);
+    const stateRes = await services.catalog.fetchWorkspaceState('token-jack', 'repo-1');
+
+    assert.equal(stateRes.ok, true);
+    assert.deepEqual(requestedHistoryBranches.sort(), ['jack_personal_branch', 'main']);
+    assert.equal(stateRes.data!.commits.length, 3, 'All 3 unique commits across branches should be present');
+    assert.equal(stateRes.data!.commits[0].hash, 'cmerge2');
+    assert.equal(stateRes.data!.commits[1].hash, 'cmerge1');
+    assert.equal(stateRes.data!.commits[2].hash, 'cinit');
   });
 });

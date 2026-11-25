@@ -366,13 +366,17 @@ export class MergeRequestService {
 
       await repos.commits.registerSnapshot(repoId, snapshotInfo.hash, snapshotInfo.recordCount, snapshotInfo.sizeBytes);
 
+      const parents = mr.targetHeadCommitId === mr.sourceHeadCommitId
+        ? [mr.targetHeadCommitId]
+        : [mr.targetHeadCommitId, mr.sourceHeadCommitId];
+
       const mergeCommit = await repos.commits.insert({
         repoId,
         snapshotHash: snapshotInfo.hash,
         authorId: actor.userId,
         message,
         kind: 'merge',
-        parents: [mr.targetHeadCommitId, mr.sourceHeadCommitId],
+        parents,
       });
 
       const casOk = await repos.branches.compareAndSetHead(lockedTarget.id, mr.targetHeadCommitId, mergeCommit.id);
